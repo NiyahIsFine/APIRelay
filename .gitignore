@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+
+# Visual Studio / VS Code local state
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Local tool logs / generated state
+.x3client/
+*.log
+
+# Runtime data should stay local
+settings.json
+model-costs.json
+Logs/
+Records/
+
+# OS files
+.DS_Store
+Thumbs.db
