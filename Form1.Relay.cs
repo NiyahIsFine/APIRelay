@@ -132,6 +132,14 @@ namespace APIRelay
                 using var providerRequest = BuildProviderRequest(request, requestBody, relayRoute, out var providerRequestBody);
                 var providerUri = providerRequest.RequestUri!;
                 AppendInternalLog($"Request {requestId} provider request built. Target={providerUri}; BodyBytes={providerRequestBody.Length}");
+                if (requestBody.Length > 0)
+                {
+                    AppendProtocolLog(requestId, ProtocolTraceDirection.ClientToTool, relayRoute.FromProtocol, requestBody);
+                    if (relayRoute.FromProtocol != relayRoute.ToProtocol)
+                    {
+                        AppendProtocolLog(requestId, ProtocolTraceDirection.ToolToServer, relayRoute.ToProtocol, providerRequestBody);
+                    }
+                }
 
                 var stopwatch = Stopwatch.StartNew();
                 AppendInternalLog($"Request {requestId} sending provider request.");
@@ -156,7 +164,7 @@ namespace APIRelay
                 {
                     AppendInternalLog($"Request {requestId} passthrough streaming started.");
                     ApplyProviderResponse(response, providerResponse, null, responseMediaType);
-                    var streamingResult = await StreamProviderResponseToClientAsync(requestId, providerResponse, response, stopwatch, cancellationToken);
+                    var streamingResult = await StreamProviderResponseToClientAsync(requestId, providerResponse, response, relayRoute, stopwatch, cancellationToken);
                     firstResponseMs = streamingResult.FirstByteMs;
                     usage = streamingResult.Usage;
                     AppendInternalLog($"Request {requestId} passthrough streaming completed. ProviderBytes={streamingResult.ProviderBytes}; HeaderWaitMs={headerWaitMs}; FirstResponseMs={firstResponseMs}");
@@ -166,9 +174,19 @@ namespace APIRelay
                     AppendInternalLog($"Request {requestId} non-stream response reading started.");
                     (responseBytes, firstResponseMs) = await ReadProviderResponseWithFirstByteTimingAsync(providerResponse, stopwatch, cancellationToken);
                     AppendInternalLog($"Request {requestId} provider body read. ProviderBytes={responseBytes.Length}; HeaderWaitMs={headerWaitMs}; FirstResponseMs={firstResponseMs}");
+                    if (responseBytes.Length > 0)
+                    {
+                        AppendProtocolLog(requestId, ProtocolTraceDirection.ServerToTool, relayRoute.ToProtocol, responseBytes);
+                    }
+
                     var clientResponse = BuildClientResponse(responseBytes, responseMediaType, relayRoute, requestBody, IsModelListRequest(request));
                     AppendInternalLog($"Request {requestId} client response built. ClientBytes={clientResponse.Body.Length}; ContentType={clientResponse.ContentType ?? string.Empty}");
                     convertedResponse = ShouldConvertResponse(relayRoute) ? clientResponse : null;
+                    if (relayRoute.FromProtocol != relayRoute.ToProtocol && clientResponse.Body.Length > 0)
+                    {
+                        AppendProtocolLog(requestId, ProtocolTraceDirection.ToolToClient, relayRoute.FromProtocol, clientResponse.Body);
+                    }
+
                     ApplyProviderResponse(response, providerResponse, clientResponse.Body.Length, clientResponse.ContentType);
                     await WriteResponseBodyAsync(response, clientResponse.Body, cancellationToken);
                     AppendInternalLog($"Request {requestId} client response body written.");
@@ -243,13 +261,15 @@ namespace APIRelay
             return (memoryStream.ToArray(), firstByteMs);
         }
 
-        private async Task<StreamingRelayResult> StreamProviderResponseToClientAsync(string requestId, HttpResponseMessage providerResponse, HttpListenerResponse localResponse, Stopwatch stopwatch, CancellationToken cancellationToken)
+        private async Task<StreamingRelayResult> StreamProviderResponseToClientAsync(string requestId, HttpResponseMessage providerResponse, HttpListenerResponse localResponse, RelayRoute relayRoute, Stopwatch stopwatch, CancellationToken cancellationToken)
         {
             try
             {
                 await using var responseStream = await providerResponse.Content.ReadAsStreamAsync(cancellationToken);
+                var responseEncoding = TryGetResponseEncoding(providerResponse);
                 var buffer = new byte[81920];
-                var usageAccumulator = new StreamingUsageAccumulator(TryGetResponseEncoding(providerResponse));
+                var usageAccumulator = new StreamingUsageAccumulator(responseEncoding);
+                var traceAccumulator = new StreamingProtocolTraceAccumulator(responseEncoding, body => AppendProtocolLog(requestId, ProtocolTraceDirection.ServerToTool, relayRoute.ToProtocol, body));
                 long firstByteMs = 0;
                 long providerBytes = 0;
                 var progress = new StreamingProgressLogger(this, requestId, "passthrough", stopwatch);
@@ -270,11 +290,13 @@ namespace APIRelay
                     await localResponse.OutputStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     await localResponse.OutputStream.FlushAsync(cancellationToken);
                     providerBytes += read;
+                    traceAccumulator.AppendBytes(buffer, read);
                     usageAccumulator.AppendBytes(buffer, read);
                     progress.Report(providerBytes, providerBytes, force: false);
                 }
 
                 progress.Report(providerBytes, providerBytes, force: true);
+                traceAccumulator.Complete();
                 usageAccumulator.Complete();
                 return new StreamingRelayResult(firstByteMs, usageAccumulator.Usage, providerBytes, providerBytes);
             }
@@ -311,6 +333,16 @@ namespace APIRelay
                         var writeResult = await WriteConvertedSseEventAsync(eventData.ToString(), relayRoute, state, localResponse, stopwatch, firstByteMs, cancellationToken);
                         firstByteMs = writeResult.FirstByteMs;
                         clientBytes += writeResult.BytesWritten;
+                        if (eventData.Length > 0)
+                        {
+                            AppendProtocolLog(requestId, ProtocolTraceDirection.ServerToTool, relayRoute.ToProtocol, eventData.ToString());
+                        }
+
+                        if (writeResult.Payload.Length > 0)
+                        {
+                            AppendProtocolLog(requestId, ProtocolTraceDirection.ToolToClient, relayRoute.FromProtocol, writeResult.Payload);
+                        }
+
                         progress.Report(providerBytes, clientBytes, force: false);
                         eventData.Clear();
                         continue;
@@ -325,7 +357,23 @@ namespace APIRelay
                 var finalWriteResult = await WriteConvertedSseEventAsync(eventData.ToString(), relayRoute, state, localResponse, stopwatch, firstByteMs, cancellationToken);
                 firstByteMs = finalWriteResult.FirstByteMs;
                 clientBytes += finalWriteResult.BytesWritten;
-                clientBytes += await WriteConvertedSseCompletionAsync(relayRoute, state, localResponse, cancellationToken);
+                if (eventData.Length > 0)
+                {
+                    AppendProtocolLog(requestId, ProtocolTraceDirection.ServerToTool, relayRoute.ToProtocol, eventData.ToString());
+                }
+
+                if (finalWriteResult.Payload.Length > 0)
+                {
+                    AppendProtocolLog(requestId, ProtocolTraceDirection.ToolToClient, relayRoute.FromProtocol, finalWriteResult.Payload);
+                }
+
+                var completionWriteResult = await WriteConvertedSseCompletionAsync(relayRoute, state, localResponse, cancellationToken);
+                clientBytes += completionWriteResult.BytesWritten;
+                if (completionWriteResult.Payload.Length > 0)
+                {
+                    AppendProtocolLog(requestId, ProtocolTraceDirection.ToolToClient, relayRoute.FromProtocol, completionWriteResult.Payload);
+                }
+
                 progress.Report(providerBytes, clientBytes, force: true);
                 usageAccumulator.Complete();
                 return new StreamingRelayResult(firstByteMs, MergeUsage(usageAccumulator.Usage, state.Usage), providerBytes, clientBytes);
@@ -337,7 +385,7 @@ namespace APIRelay
             }
         }
 
-        private async Task<(long FirstByteMs, long BytesWritten)> WriteConvertedSseEventAsync(string eventData, RelayRoute relayRoute, StreamingProtocolConversionState state, HttpListenerResponse localResponse, Stopwatch stopwatch, long firstByteMs, CancellationToken cancellationToken)
+        private async Task<(long FirstByteMs, long BytesWritten, string Payload)> WriteConvertedSseEventAsync(string eventData, RelayRoute relayRoute, StreamingProtocolConversionState state, HttpListenerResponse localResponse, Stopwatch stopwatch, long firstByteMs, CancellationToken cancellationToken)
         {
             string payload;
             try
@@ -352,7 +400,7 @@ namespace APIRelay
 
             if (payload.Length == 0)
             {
-                return (firstByteMs, 0);
+                return (firstByteMs, 0, string.Empty);
             }
 
             try
@@ -360,7 +408,7 @@ namespace APIRelay
                 var bytes = Encoding.UTF8.GetBytes(payload);
                 await localResponse.OutputStream.WriteAsync(bytes.AsMemory(0, bytes.Length), cancellationToken);
                 await localResponse.OutputStream.FlushAsync(cancellationToken);
-                return (firstByteMs == 0 ? stopwatch.ElapsedMilliseconds : firstByteMs, bytes.Length);
+                return (firstByteMs == 0 ? stopwatch.ElapsedMilliseconds : firstByteMs, bytes.Length, payload);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -369,18 +417,18 @@ namespace APIRelay
             }
         }
 
-        private async Task<long> WriteConvertedSseCompletionAsync(RelayRoute relayRoute, StreamingProtocolConversionState state, HttpListenerResponse localResponse, CancellationToken cancellationToken)
+        private async Task<(long BytesWritten, string Payload)> WriteConvertedSseCompletionAsync(RelayRoute relayRoute, StreamingProtocolConversionState state, HttpListenerResponse localResponse, CancellationToken cancellationToken)
         {
             var payload = BuildStreamingCompletionEvent(relayRoute.FromProtocol, state);
             if (payload.Length == 0)
             {
-                return 0;
+                return (0, string.Empty);
             }
 
             var bytes = Encoding.UTF8.GetBytes(payload);
             await localResponse.OutputStream.WriteAsync(bytes.AsMemory(0, bytes.Length), cancellationToken);
             await localResponse.OutputStream.FlushAsync(cancellationToken);
-            return bytes.Length;
+            return (bytes.Length, payload);
         }
 
     }

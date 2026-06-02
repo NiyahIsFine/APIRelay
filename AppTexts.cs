@@ -131,6 +131,8 @@ namespace APIRelay
         Txt125, // 今日统计窗标题
         Txt126, // 今日 Token
         Txt127, // 派发窗口标题：Provider Routes Save 等复用
+        Txt128, // 协议追踪
+        Txt129, // 打开协议日志
     }
 
     internal static class AppTexts
@@ -264,6 +266,8 @@ namespace APIRelay
             [TextId.Txt125] = ("APIRelay Today's Stats", "APIRelay 今日统计"),
             [TextId.Txt126] = ("Today's Tokens", "今日 Token"),
             [TextId.Txt127] = ("Invalid URL", "地址无效"),
+            [TextId.Txt128] = ("Protocol Trace", "协议追踪"),
+            [TextId.Txt129] = ("Open Trace", "打开追踪"),
         };
 
         public static string GetText(AppLanguage language, TextId id, params object[] args)

@@ -271,6 +271,107 @@ namespace APIRelay
             }
         }
 
+        private sealed class StreamingProtocolTraceAccumulator
+        {
+            private readonly Decoder decoder;
+            private readonly Action<string> appendEvent;
+            private readonly char[] charBuffer = new char[81920];
+            private readonly StringBuilder lineBuffer = new();
+            private readonly StringBuilder eventData = new();
+            private readonly StringBuilder rawData = new();
+
+            public StreamingProtocolTraceAccumulator(Encoding encoding, Action<string> appendEvent)
+            {
+                decoder = encoding.GetDecoder();
+                this.appendEvent = appendEvent;
+            }
+
+            public void AppendBytes(byte[] buffer, int length)
+            {
+                var completed = false;
+                var bytesUsedTotal = 0;
+
+                while (!completed && bytesUsedTotal < length)
+                {
+                    decoder.Convert(
+                        buffer,
+                        bytesUsedTotal,
+                        length - bytesUsedTotal,
+                        charBuffer,
+                        0,
+                        charBuffer.Length,
+                        false,
+                        out var bytesUsed,
+                        out var charsUsed,
+                        out completed);
+
+                    bytesUsedTotal += bytesUsed;
+                    AppendChars(charBuffer.AsSpan(0, charsUsed));
+                }
+            }
+
+            public void Complete()
+            {
+                if (lineBuffer.Length > 0)
+                {
+                    ProcessLine(lineBuffer.ToString().TrimEnd('\r'));
+                    lineBuffer.Clear();
+                }
+
+                FlushEventData();
+            }
+
+            private void AppendChars(ReadOnlySpan<char> chars)
+            {
+                foreach (var character in chars)
+                {
+                    if (character == '\n')
+                    {
+                        ProcessLine(lineBuffer.ToString().TrimEnd('\r'));
+                        lineBuffer.Clear();
+                        continue;
+                    }
+
+                    lineBuffer.Append(character);
+                }
+            }
+
+            private void ProcessLine(string line)
+            {
+                var trimmedLine = line.Trim();
+                if (trimmedLine.Length == 0)
+                {
+                    FlushEventData();
+                    return;
+                }
+
+                if (trimmedLine.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    eventData.AppendLine(trimmedLine[5..].TrimStart());
+                    return;
+                }
+
+                rawData.AppendLine(line);
+            }
+
+            private void FlushEventData()
+            {
+                if (eventData.Length > 0)
+                {
+                    appendEvent(eventData.ToString());
+                    eventData.Clear();
+                }
+
+                if (rawData.Length == 0)
+                {
+                    return;
+                }
+
+                appendEvent(rawData.ToString());
+                rawData.Clear();
+            }
+        }
+
         private sealed record RouteProtocolOption(string DisplayName, ApiRouteKind? RouteKind)
         {
             public override string ToString()
@@ -292,6 +393,14 @@ namespace APIRelay
             Anthropic
         }
 
+        private enum ProtocolTraceDirection
+        {
+            ClientToTool,
+            ToolToServer,
+            ServerToTool,
+            ToolToClient
+        }
+
         private sealed class RelaySettings
         {
             public string LocalUrl { get; set; } = string.Empty;
@@ -303,6 +412,7 @@ namespace APIRelay
             public ApiRouteKind RouteHelperServerProtocol { get; set; } = ApiRouteKind.ChatCompletions;
             public ApiRouteKind? RouteHelperToolProtocol { get; set; }
             public bool AutoStartRelay { get; set; }
+            public bool ProtocolTraceVisible { get; set; }
             public int? UsageBubbleLocationX { get; set; }
             public int? UsageBubbleLocationY { get; set; }
             public List<ProviderEndpointConfig> ProviderConfigs { get; set; } = new();

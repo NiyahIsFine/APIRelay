@@ -32,7 +32,9 @@ namespace APIRelay
         private readonly string logsDirectory;
         private readonly string recordsDirectory;
         private readonly string internalLogPath;
+        private readonly string protocolLogPath;
         private readonly object internalLogLock = new();
+        private readonly object protocolLogLock = new();
         private readonly object recordsLock = new();
         private readonly List<RequestRecord> visibleRecords = new();
         private readonly List<ModelCostConfig> modelCosts = new();
@@ -45,6 +47,8 @@ namespace APIRelay
         private bool statsAllDates;
         private bool allowExit;
         private bool usageBubbleVisible = true;
+        private bool protocolTraceVisible;
+        private int openLogRightClickCount;
         private bool autoStartRelayQueued;
         private Point? savedUsageBubbleLocation;
         private Point? dailyChartMouseLocation;
@@ -52,6 +56,9 @@ namespace APIRelay
         private NotifyIcon? trayIcon;
         private ToolStripMenuItem? toggleBubbleMenuItem;
         private FloatingUsageBubble? usageBubble;
+        private FlowLayoutPanel protocolTracePanel = null!;
+        private CheckBox protocolTraceCheckBox = null!;
+        private Button openProtocolLogButton = null!;
 
         private CancellationTokenSource? listenerCancellation;
         private HttpListener? listener;
@@ -68,8 +75,10 @@ namespace APIRelay
             logsDirectory = Path.Combine(appDataRoot, "Logs");
             recordsDirectory = Path.Combine(appDataRoot, "Records");
             internalLogPath = Path.Combine(logsDirectory, "internal.txt");
+            protocolLogPath = Path.Combine(logsDirectory, "protocol-trace.txt");
 
             InitializeComponent();
+            InitializeProtocolTraceControls();
             ApplyApplicationIcon();
             requestGrid.ShowCellToolTips = true;
             InitializeLanguageSelector();
@@ -239,6 +248,39 @@ namespace APIRelay
             {
                 MessageBox.Show(GetText(TextId.Txt46, ex.Message), GetText(TextId.Txt47), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void OpenProtocolLogButton_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                EnsureProtocolLogFile();
+                Process.Start(new ProcessStartInfo(protocolLogPath) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(GetText(TextId.Txt46, ex.Message), GetText(TextId.Txt47), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void OpenLogButton_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || protocolTraceVisible)
+            {
+                return;
+            }
+
+            openLogRightClickCount++;
+            if (openLogRightClickCount >= 10)
+            {
+                openLogRightClickCount = 0;
+                SetProtocolTraceVisible(true, saveSettings: true);
+            }
+        }
+
+        private void ProtocolTraceCheckBox_Click(object? sender, EventArgs e)
+        {
+            SetProtocolTraceVisible(false, saveSettings: true);
         }
 
         private void ModelCostsButton_Click(object sender, EventArgs e)

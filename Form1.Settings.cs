@@ -62,6 +62,7 @@ namespace APIRelay
                         SelectRouteProtocol(toolProtocolComboBox, settings.RouteHelperToolProtocol);
                         UpdateRouteUrlPreview();
                         autoStartRelayCheckBox.Checked = settings.AutoStartRelay;
+                        SetProtocolTraceVisible(settings.ProtocolTraceVisible, saveSettings: false);
                         currentLanguage = TryParseLanguage(settings.Language, out var language) ? language : AppLanguage.English;
                         SelectLanguage(currentLanguage);
                         savedUsageBubbleLocation = settings.UsageBubbleLocationX.HasValue && settings.UsageBubbleLocationY.HasValue
@@ -216,7 +217,8 @@ namespace APIRelay
         {
             var logFiles = new DirectoryInfo(logsDirectory)
                 .GetFiles("*.txt")
-                .Where(file => !file.Name.Equals("internal.txt", StringComparison.OrdinalIgnoreCase));
+                .Where(file => !file.Name.Equals("internal.txt", StringComparison.OrdinalIgnoreCase)
+                    && !file.FullName.Equals(protocolLogPath, StringComparison.OrdinalIgnoreCase));
 
             foreach (var logFile in logFiles)
             {
@@ -246,6 +248,7 @@ namespace APIRelay
                     RouteHelperServerProtocol = GetSelectedRouteProtocol(serverProtocolComboBox) ?? ApiRouteKind.ChatCompletions,
                     RouteHelperToolProtocol = GetSelectedRouteProtocol(toolProtocolComboBox),
                     AutoStartRelay = autoStartRelayCheckBox.Checked,
+                    ProtocolTraceVisible = protocolTraceVisible,
                     UsageBubbleLocationX = savedUsageBubbleLocation?.X,
                     UsageBubbleLocationY = savedUsageBubbleLocation?.Y,
                     ProviderConfigs = providerConfigs.Values
@@ -278,6 +281,108 @@ namespace APIRelay
         {
             var line = includeTime ? $"[{DateTime.Now:HH:mm:ss}] {message}" : message;
             logTextBox.AppendText(line + Environment.NewLine);
+        }
+
+        private void InitializeProtocolTraceControls()
+        {
+            protocolTracePanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                Margin = new Padding(22, 2, 3, 0),
+                Padding = new Padding(8, 0, 0, 0),
+                BackColor = Color.FromArgb(245, 248, 255),
+                BorderStyle = BorderStyle.FixedSingle,
+                WrapContents = false,
+                Visible = false
+            };
+
+            protocolTraceCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Checked = true,
+                Margin = new Padding(3, 5, 10, 3),
+                UseVisualStyleBackColor = true
+            };
+
+            openProtocolLogButton = new Button
+            {
+                AutoSize = true,
+                Height = 26,
+                Margin = new Padding(0, 2, 4, 2),
+                UseVisualStyleBackColor = true
+            };
+
+            protocolTraceCheckBox.Click += ProtocolTraceCheckBox_Click;
+            openProtocolLogButton.Click += OpenProtocolLogButton_Click;
+            openLogButton.MouseUp += OpenLogButton_MouseUp;
+
+            protocolTracePanel.Controls.Add(protocolTraceCheckBox);
+            protocolTracePanel.Controls.Add(openProtocolLogButton);
+            logOptionsPanel.Controls.Add(protocolTracePanel);
+        }
+
+        private void SetProtocolTraceVisible(bool visible, bool saveSettings)
+        {
+            protocolTraceVisible = visible;
+            openLogRightClickCount = 0;
+
+            if (protocolTracePanel != null)
+            {
+                protocolTracePanel.Visible = visible;
+            }
+
+            if (protocolTraceCheckBox != null)
+            {
+                protocolTraceCheckBox.Checked = visible;
+            }
+
+            if (saveSettings)
+            {
+                SaveSettings();
+            }
+        }
+
+        private void EnsureProtocolLogFile()
+        {
+            lock (protocolLogLock)
+            {
+                Directory.CreateDirectory(logsDirectory);
+                if (!File.Exists(protocolLogPath))
+                {
+                    File.WriteAllText(protocolLogPath, string.Empty, Encoding.UTF8);
+                }
+            }
+        }
+
+        private void AppendProtocolLog(string requestId, ProtocolTraceDirection direction, ApiRouteKind protocol, byte[] body)
+        {
+            AppendProtocolLog(requestId, direction, protocol, Encoding.UTF8.GetString(body));
+        }
+
+        private void AppendProtocolLog(string requestId, ProtocolTraceDirection direction, ApiRouteKind protocol, string body)
+        {
+            if (!protocolTraceVisible)
+            {
+                return;
+            }
+
+            try
+            {
+                var builder = new StringBuilder();
+                builder.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] Request={requestId}; Direction={direction}; Protocol={protocol}");
+                builder.AppendLine(body);
+                builder.AppendLine();
+
+                lock (protocolLogLock)
+                {
+                    Directory.CreateDirectory(logsDirectory);
+                    File.AppendAllText(protocolLogPath, builder.ToString(), Encoding.UTF8);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Debug.WriteLine(ex);
+            }
         }
 
         private bool TryBeginInvoke(Action action)
