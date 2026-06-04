@@ -536,6 +536,8 @@ namespace APIRelay
                 AddRequestGridRow(record);
             }
 
+            ScrollRequestGridToTop();
+
             UpdateTotals();
             UpdateUsageBubble();
             dailyChartPanel.Invalidate();
@@ -576,6 +578,18 @@ namespace APIRelay
             {
                 AddRequestGridRow(record);
             }
+
+            ScrollRequestGridToTop();
+        }
+
+        private void ScrollRequestGridToTop()
+        {
+            if (requestGrid.Rows.Count == 0)
+            {
+                return;
+            }
+
+            requestGrid.FirstDisplayedScrollingRowIndex = 0;
         }
 
         private void AddRequestGridRow(RequestRecord record)

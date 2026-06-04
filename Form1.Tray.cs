@@ -84,6 +84,7 @@ namespace APIRelay
             ShowInTaskbar = true;
             Show();
             WindowState = FormWindowState.Normal;
+            ScrollRequestGridToTop();
             Activate();
             usageBubble?.KeepAboveNormalWindows();
         }
