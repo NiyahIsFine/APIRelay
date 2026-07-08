@@ -52,6 +52,7 @@
             logOptionsPanel = new FlowLayoutPanel();
             autoStartRelayCheckBox = new CheckBox();
             openLogButton = new Button();
+            openLogDirButton = new Button();
             buttonPanel = new FlowLayoutPanel();
             startButton = new Button();
             stopButton = new Button();
@@ -360,6 +361,7 @@
             // 
             logOptionsPanel.Controls.Add(autoStartRelayCheckBox);
             logOptionsPanel.Controls.Add(openLogButton);
+            logOptionsPanel.Controls.Add(openLogDirButton);
             logOptionsPanel.Dock = DockStyle.Fill;
             logOptionsPanel.Location = new Point(130, 78);
             logOptionsPanel.Margin = new Padding(0);
@@ -389,6 +391,17 @@
             openLogButton.Text = "打开日志";
             openLogButton.UseVisualStyleBackColor = true;
             openLogButton.Click += OpenLogButton_Click;
+            // 
+            // openLogDirButton
+            // 
+            openLogDirButton.Location = new Point(273, 3);
+            openLogDirButton.Margin = new Padding(3, 3, 3, 3);
+            openLogDirButton.Name = "openLogDirButton";
+            openLogDirButton.Size = new Size(110, 28);
+            openLogDirButton.TabIndex = 2;
+            openLogDirButton.Text = "打开日志目录";
+            openLogDirButton.UseVisualStyleBackColor = true;
+            openLogDirButton.Click += OpenLogDirButton_Click;
             // 
             // buttonPanel
             // 
@@ -803,6 +816,7 @@
         private FlowLayoutPanel logOptionsPanel;
         private CheckBox autoStartRelayCheckBox;
         private Button openLogButton;
+        private Button openLogDirButton;
         private FlowLayoutPanel buttonPanel;
         private Button startButton;
         private Button stopButton;

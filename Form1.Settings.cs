@@ -262,7 +262,9 @@ namespace APIRelay
                                 ? config.ModelListUrl.Trim()
                                 : BuildModelListUrl(config.RouteKind, config.ProviderUrl),
                             ModelListUrlOverridden = config.ModelListUrlOverridden,
-                            AnthropicVersion = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion.Trim()
+                            AnthropicVersion = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion.Trim(),
+                            ForceCache = config.ForceCache,
+                            CacheOnConversion = config.CacheOnConversion
                         })
                         .ToList()
                 };

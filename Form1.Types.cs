@@ -428,6 +428,8 @@ namespace APIRelay
             public string ModelListUrl { get; set; } = string.Empty;
             public bool ModelListUrlOverridden { get; set; }
             public string AnthropicVersion { get; set; } = "2023-06-01";
+            public bool ForceCache { get; set; }
+            public bool CacheOnConversion { get; set; } = true;
         }
 
         private sealed class ModelCostConfig

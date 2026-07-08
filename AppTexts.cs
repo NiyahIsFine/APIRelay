@@ -133,6 +133,9 @@ namespace APIRelay
         Txt127, // 派发窗口标题：Provider Routes Save 等复用
         Txt128, // 协议追踪
         Txt129, // 打开协议日志
+        Txt130, // 打开日志目录
+        Txt131, // 强制缓存
+        Txt132, // 转协议时缓存
     }
 
     internal static class AppTexts
@@ -268,6 +271,9 @@ namespace APIRelay
             [TextId.Txt127] = ("Invalid URL", "地址无效"),
             [TextId.Txt128] = ("Protocol Trace", "协议追踪"),
             [TextId.Txt129] = ("Open Trace", "打开追踪"),
+            [TextId.Txt130] = ("Open Log Folder", "打开日志目录"),
+            [TextId.Txt131] = ("Force cache", "强制缓存"),
+            [TextId.Txt132] = ("Cache on conversion", "转协议时缓存"),
         };
 
         public static string GetText(AppLanguage language, TextId id, params object[] args)

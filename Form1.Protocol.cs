@@ -484,6 +484,13 @@ namespace APIRelay
             if (requestBody.Length > 0)
             {
                 providerRequestBody = TransformRequestBody(requestBody, relayRoute.FromProtocol, relayRoute.ToProtocol);
+
+                if (relayRoute.ToProtocol == ApiRouteKind.AnthropicMessages
+                    && (endpoint.ForceCache || (relayRoute.FromProtocol != relayRoute.ToProtocol && endpoint.CacheOnConversion)))
+                {
+                    providerRequestBody = ApplyAnthropicCacheControl(providerRequestBody);
+                }
+
                 providerRequest.Content = new ByteArrayContent(providerRequestBody);
 
                 if (!string.IsNullOrEmpty(request.ContentType))
@@ -673,6 +680,254 @@ namespace APIRelay
             }
 
             return BuildProtocolRequest(toProtocol, protocolRequest);
+        }
+
+        private static byte[] ApplyAnthropicCacheControl(byte[] requestBody)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(requestBody);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    return requestBody;
+                }
+
+                using var outputStream = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(outputStream))
+                {
+                    writer.WriteStartObject();
+                    foreach (var property in root.EnumerateObject())
+                    {
+                        if (property.NameEquals("system"))
+                        {
+                            writer.WritePropertyName("system");
+                            WriteAnthropicSystemWithCacheControl(writer, property.Value);
+                        }
+                        else if (property.NameEquals("tools"))
+                        {
+                            writer.WritePropertyName("tools");
+                            WriteAnthropicToolsWithCacheControl(writer, property.Value);
+                        }
+                        else if (property.NameEquals("messages"))
+                        {
+                            writer.WritePropertyName("messages");
+                            WriteAnthropicMessagesWithCacheControl(writer, property.Value);
+                        }
+                        else
+                        {
+                            property.WriteTo(writer);
+                        }
+                    }
+
+                    writer.WriteEndObject();
+                }
+
+                return outputStream.ToArray();
+            }
+            catch (JsonException)
+            {
+                return requestBody;
+            }
+        }
+
+        private static void WriteAnthropicSystemWithCacheControl(Utf8JsonWriter writer, JsonElement system)
+        {
+            if (system.ValueKind == JsonValueKind.String)
+            {
+                var text = system.GetString();
+                if (string.IsNullOrEmpty(text))
+                {
+                    system.WriteTo(writer);
+                    return;
+                }
+
+                writer.WriteStartArray();
+                writer.WriteStartObject();
+                writer.WriteString("type", "text");
+                writer.WriteString("text", text);
+                WriteEphemeralCacheControl(writer);
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                return;
+            }
+
+            if (system.ValueKind != JsonValueKind.Array)
+            {
+                system.WriteTo(writer);
+                return;
+            }
+
+            var blocks = system.EnumerateArray().ToList();
+            var targetIndex = FindLastCacheableBlockIndex(blocks);
+            writer.WriteStartArray();
+            for (var i = 0; i < blocks.Count; i++)
+            {
+                WriteBlockWithCacheControl(writer, blocks[i], i == targetIndex);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        private static void WriteAnthropicToolsWithCacheControl(Utf8JsonWriter writer, JsonElement tools)
+        {
+            if (tools.ValueKind != JsonValueKind.Array)
+            {
+                tools.WriteTo(writer);
+                return;
+            }
+
+            var items = tools.EnumerateArray().ToList();
+            var targetIndex = items.FindLastIndex(item => item.ValueKind == JsonValueKind.Object);
+            writer.WriteStartArray();
+            for (var i = 0; i < items.Count; i++)
+            {
+                WriteBlockWithCacheControl(writer, items[i], i == targetIndex);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        private static void WriteAnthropicMessagesWithCacheControl(Utf8JsonWriter writer, JsonElement messages)
+        {
+            if (messages.ValueKind != JsonValueKind.Array)
+            {
+                messages.WriteTo(writer);
+                return;
+            }
+
+            var items = messages.EnumerateArray().ToList();
+            var lastUserIndex = items.FindLastIndex(message => message.ValueKind == JsonValueKind.Object
+                && ReadString(message, "role").Equals("user", StringComparison.OrdinalIgnoreCase));
+
+            writer.WriteStartArray();
+            for (var i = 0; i < items.Count; i++)
+            {
+                WriteAnthropicMessageWithCacheControl(writer, items[i], i == lastUserIndex);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        private static void WriteAnthropicMessageWithCacheControl(Utf8JsonWriter writer, JsonElement message, bool addBreakpoint)
+        {
+            if (message.ValueKind != JsonValueKind.Object)
+            {
+                message.WriteTo(writer);
+                return;
+            }
+
+            writer.WriteStartObject();
+            foreach (var property in message.EnumerateObject())
+            {
+                if (property.NameEquals("content"))
+                {
+                    writer.WritePropertyName("content");
+                    WriteAnthropicMessageContentWithCacheControl(writer, property.Value, addBreakpoint);
+                    continue;
+                }
+
+                property.WriteTo(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        private static void WriteAnthropicMessageContentWithCacheControl(Utf8JsonWriter writer, JsonElement content, bool addBreakpoint)
+        {
+            if (content.ValueKind == JsonValueKind.String)
+            {
+                var text = content.GetString();
+                if (!addBreakpoint || string.IsNullOrEmpty(text))
+                {
+                    content.WriteTo(writer);
+                    return;
+                }
+
+                writer.WriteStartArray();
+                writer.WriteStartObject();
+                writer.WriteString("type", "text");
+                writer.WriteString("text", text);
+                WriteEphemeralCacheControl(writer);
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                return;
+            }
+
+            if (content.ValueKind != JsonValueKind.Array)
+            {
+                content.WriteTo(writer);
+                return;
+            }
+
+            var blocks = content.EnumerateArray().ToList();
+            var targetIndex = addBreakpoint ? FindLastCacheableBlockIndex(blocks) : -1;
+            writer.WriteStartArray();
+            for (var i = 0; i < blocks.Count; i++)
+            {
+                WriteBlockWithCacheControl(writer, blocks[i], i == targetIndex);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        private static void WriteBlockWithCacheControl(Utf8JsonWriter writer, JsonElement block, bool addCacheControl)
+        {
+            if (block.ValueKind != JsonValueKind.Object)
+            {
+                block.WriteTo(writer);
+                return;
+            }
+
+            writer.WriteStartObject();
+            foreach (var property in block.EnumerateObject())
+            {
+                if (property.NameEquals("cache_control"))
+                {
+                    continue;
+                }
+
+                property.WriteTo(writer);
+            }
+
+            if (addCacheControl)
+            {
+                WriteEphemeralCacheControl(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        private static void WriteEphemeralCacheControl(Utf8JsonWriter writer)
+        {
+            writer.WritePropertyName("cache_control");
+            writer.WriteStartObject();
+            writer.WriteString("type", "ephemeral");
+            writer.WriteEndObject();
+        }
+
+        private static int FindLastCacheableBlockIndex(List<JsonElement> blocks)
+        {
+            for (var i = blocks.Count - 1; i >= 0; i--)
+            {
+                if (blocks[i].ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var type = ReadString(blocks[i], "type");
+                if (type is "text" or "image" or "tool_use" or "tool_result" or "document")
+                {
+                    if (type == "text" && string.IsNullOrEmpty(ReadString(blocks[i], "text")))
+                    {
+                        continue;
+                    }
+
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static ProtocolRequest? ParseProtocolRequest(ApiRouteKind protocol, byte[] requestBody)

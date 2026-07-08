@@ -263,6 +263,19 @@ namespace APIRelay
             }
         }
 
+        private void OpenLogDirButton_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                Directory.CreateDirectory(logsDirectory);
+                Process.Start(new ProcessStartInfo(logsDirectory) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(GetText(TextId.Txt46, ex.Message), GetText(TextId.Txt47), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void OpenLogButton_MouseUp(object? sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right || protocolTraceVisible)

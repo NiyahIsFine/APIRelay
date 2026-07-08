@@ -63,6 +63,7 @@ namespace APIRelay
             copyRouteUrlButton.Text = GetText(TextId.Txt11);
             autoStartRelayCheckBox.Text = GetText(TextId.Txt12);
             openLogButton.Text = GetText(TextId.Txt13);
+            openLogDirButton.Text = GetText(TextId.Txt130);
             protocolTraceCheckBox.Text = GetText(TextId.Txt128);
             openProtocolLogButton.Text = GetText(TextId.Txt129);
             startButton.Text = GetText(TextId.Txt14);

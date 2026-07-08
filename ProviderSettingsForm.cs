@@ -19,6 +19,8 @@ namespace APIRelay
             private readonly Dictionary<ApiRouteKind, TextBox> modelListUrlTextBoxes = new();
             private readonly Dictionary<ApiRouteKind, CheckBox> modelListOverwriteCheckBoxes = new();
             private readonly Dictionary<ApiRouteKind, TextBox> anthropicVersionTextBoxes = new();
+            private readonly Dictionary<ApiRouteKind, CheckBox> forceCacheCheckBoxes = new();
+            private readonly Dictionary<ApiRouteKind, CheckBox> cacheOnConversionCheckBoxes = new();
             private readonly AppLanguage language;
 
             public ProviderSettingsForm(IEnumerable<ProviderEndpointConfig> providerConfigs, AppLanguage language)
@@ -146,10 +148,40 @@ namespace APIRelay
 
                 if (showAnthropicVersion)
                 {
-                    var versionTextBox = new TextBox { Dock = DockStyle.Left, Width = 180, Text = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion };
+                    var versionTextBox = new TextBox { Width = 180, Margin = new Padding(0, 3, 12, 3), Text = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion };
                     anthropicVersionTextBoxes[routeKind] = versionTextBox;
+
+                    var forceCacheCheckBox = new CheckBox
+                    {
+                        AutoSize = true,
+                        Checked = config.ForceCache,
+                        Margin = new Padding(0, 5, 12, 3),
+                        Text = AppTexts.GetText(language, TextId.Txt131)
+                    };
+                    var cacheOnConversionCheckBox = new CheckBox
+                    {
+                        AutoSize = true,
+                        Checked = config.CacheOnConversion,
+                        Margin = new Padding(0, 5, 0, 3),
+                        Text = AppTexts.GetText(language, TextId.Txt132)
+                    };
+                    forceCacheCheckBoxes[routeKind] = forceCacheCheckBox;
+                    cacheOnConversionCheckBoxes[routeKind] = cacheOnConversionCheckBox;
+                    forceCacheCheckBox.CheckedChanged += (_, _) => cacheOnConversionCheckBox.Enabled = !forceCacheCheckBox.Checked;
+                    cacheOnConversionCheckBox.Enabled = !forceCacheCheckBox.Checked;
+
+                    var versionPanel = new FlowLayoutPanel
+                    {
+                        Dock = DockStyle.Fill,
+                        Margin = new Padding(0),
+                        WrapContents = false
+                    };
+                    versionPanel.Controls.Add(versionTextBox);
+                    versionPanel.Controls.Add(forceCacheCheckBox);
+                    versionPanel.Controls.Add(cacheOnConversionCheckBox);
+
                     layout.Controls.Add(CreateMiddleLeftLabel(AppTexts.GetText(language, TextId.Txt119)), 0, 2);
-                    layout.Controls.Add(versionTextBox, 1, 2);
+                    layout.Controls.Add(versionPanel, 1, 2);
                 }
 
                 groupBox.Controls.Add(layout);
@@ -198,7 +230,9 @@ namespace APIRelay
                         ModelListUrlOverridden = modelListOverwriteCheckBoxes[routeKind].Checked,
                         AnthropicVersion = anthropicVersionTextBoxes.TryGetValue(routeKind, out var versionTextBox) && !string.IsNullOrWhiteSpace(versionTextBox.Text)
                             ? versionTextBox.Text.Trim()
-                            : "2023-06-01"
+                            : "2023-06-01",
+                        ForceCache = forceCacheCheckBoxes.TryGetValue(routeKind, out var forceCacheCheckBox) && forceCacheCheckBox.Checked,
+                        CacheOnConversion = !cacheOnConversionCheckBoxes.TryGetValue(routeKind, out var cacheOnConversionCheckBox) || cacheOnConversionCheckBox.Checked
                     });
                 }
 
@@ -214,7 +248,9 @@ namespace APIRelay
                     ProviderUrl = config.ProviderUrl,
                     ModelListUrl = config.ModelListUrl,
                     ModelListUrlOverridden = config.ModelListUrlOverridden,
-                    AnthropicVersion = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion
+                    AnthropicVersion = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion,
+                    ForceCache = config.ForceCache,
+                    CacheOnConversion = config.CacheOnConversion
                 };
             }
 
