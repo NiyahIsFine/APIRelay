@@ -407,10 +407,10 @@ namespace APIRelay
         {
             var records = statsAllDates ? LoadAllRecords() : visibleRecords;
             promptTokens = records.Sum(record => (long)CalculateTotalInputTokens(record));
-            completionTokens = records.Sum(record => record.CompletionTokens);
-            cachedTokens = records.Sum(record => record.CachedTokens);
-            cacheCreationTokens = records.Sum(record => record.CacheCreationTokens);
-            totalTokens = records.Sum(record => record.TotalTokens);
+            completionTokens = records.Sum(record => (long)record.CompletionTokens);
+            cachedTokens = records.Sum(record => (long)record.CachedTokens);
+            cacheCreationTokens = records.Sum(record => (long)record.CacheCreationTokens);
+            totalTokens = records.Sum(record => (long)record.TotalTokens);
             var totalCost = records.Sum(CalculateRecordCost);
 
             promptTokensValueLabel.Text = promptTokens.ToString();
@@ -429,7 +429,7 @@ namespace APIRelay
             var todayRecords = LoadRecordsForDate(DateTime.Today);
             usageBubble.UpdateStats(
                 todayRecords.Sum(record => (long)CalculateTotalInputTokens(record)),
-                todayRecords.Sum(record => record.CompletionTokens),
+                todayRecords.Sum(record => (long)record.CompletionTokens),
                 todayRecords.Sum(CalculateRecordCost));
         }
 
