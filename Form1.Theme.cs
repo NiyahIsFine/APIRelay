@@ -175,7 +175,6 @@ namespace APIRelay
                     : code >= 400
                         ? UiTheme.Danger
                         : UiTheme.Warning;
-                e.FormattingApplied = true;
             }
 
             // Cost column emphasized.

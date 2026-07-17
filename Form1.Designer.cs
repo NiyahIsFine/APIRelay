@@ -29,12 +29,11 @@
         private void InitializeComponent()
         {
             mainLayout = new TableLayoutPanel();
-            topToolBar = new FlowLayoutPanel();
+            topToolBar = new Panel();
             providerSettingsButton = new Button();
             modelCostsButton = new Button();
             clearSelectedDateButton = new Button();
             clearAllDatesButton = new Button();
-            topToolBarSpacer = new Label();
             languageLabel = new Label();
             languageComboBox = new ThemeComboBox();
             configGroupBox = new GroupBox();
@@ -42,7 +41,7 @@
             localUrlLabel = new Label();
             localUrlTextBox = new TextBox();
             routeHelperLabel = new Label();
-            routeHelperPanel = new FlowLayoutPanel();
+            routeHelperPanel = new Panel();
             serverProtocolLabel = new Label();
             serverProtocolComboBox = new ThemeComboBox();
             toolProtocolLabel = new Label();
@@ -129,7 +128,6 @@
             topToolBar.Controls.Add(modelCostsButton);
             topToolBar.Controls.Add(clearSelectedDateButton);
             topToolBar.Controls.Add(clearAllDatesButton);
-            topToolBar.Controls.Add(topToolBarSpacer);
             topToolBar.Controls.Add(languageLabel);
             topToolBar.Controls.Add(languageComboBox);
             topToolBar.Dock = DockStyle.Fill;
@@ -137,7 +135,6 @@
             topToolBar.Name = "topToolBar";
             topToolBar.Size = new Size(1054, 30);
             topToolBar.TabIndex = 0;
-            topToolBar.WrapContents = false;
             // 
             // providerSettingsButton
             // 
@@ -183,17 +180,9 @@
             clearAllDatesButton.UseVisualStyleBackColor = true;
             clearAllDatesButton.Click += ClearAllDatesButton_Click;
             // 
-            // topToolBarSpacer
-            // 
-            topToolBarSpacer.AutoSize = false;
-            topToolBarSpacer.Location = new Point(567, 0);
-            topToolBarSpacer.Margin = new Padding(3, 0, 3, 0);
-            topToolBarSpacer.Name = "topToolBarSpacer";
-            topToolBarSpacer.Size = new Size(300, 30);
-            topToolBarSpacer.TabIndex = 4;
-            // 
             // languageLabel
             // 
+            languageLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             languageLabel.AutoSize = true;
             languageLabel.Location = new Point(873, 7);
             languageLabel.Margin = new Padding(3, 7, 6, 0);
@@ -204,6 +193,7 @@
             // 
             // languageComboBox
             // 
+            languageComboBox.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             languageComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
             languageComboBox.FormattingEnabled = true;
             languageComboBox.Location = new Point(950, 3);
@@ -293,7 +283,6 @@
             routeHelperPanel.Name = "routeHelperPanel";
             routeHelperPanel.Size = new Size(908, 34);
             routeHelperPanel.TabIndex = 2;
-            routeHelperPanel.WrapContents = false;
             // 
             // serverProtocolLabel
             // 
@@ -339,6 +328,7 @@
             // 
             // routeUrlTextBox
             // 
+            routeUrlTextBox.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             routeUrlTextBox.Location = new Point(475, 5);
             routeUrlTextBox.Margin = new Padding(3, 5, 6, 3);
             routeUrlTextBox.Name = "routeUrlTextBox";
@@ -348,6 +338,7 @@
             // 
             // copyRouteUrlButton
             // 
+            copyRouteUrlButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             copyRouteUrlButton.Location = new Point(814, 3);
             copyRouteUrlButton.Margin = new Padding(3, 3, 3, 3);
             copyRouteUrlButton.Name = "copyRouteUrlButton";
@@ -771,7 +762,6 @@
             mainLayout.ResumeLayout(false);
             mainLayout.PerformLayout();
             topToolBar.ResumeLayout(false);
-            topToolBar.PerformLayout();
             configGroupBox.ResumeLayout(false);
             configLayout.ResumeLayout(false);
             configLayout.PerformLayout();
@@ -785,19 +775,17 @@
             recordFilterPanel.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)requestGrid).EndInit();
             routeHelperPanel.ResumeLayout(false);
-            routeHelperPanel.PerformLayout();
             ResumeLayout(false);
         }
 
         #endregion
 
         private TableLayoutPanel mainLayout;
-        private FlowLayoutPanel topToolBar;
+        private Panel topToolBar;
         private Button providerSettingsButton;
         private Button modelCostsButton;
         private Button clearSelectedDateButton;
         private Button clearAllDatesButton;
-        private Label topToolBarSpacer;
         private Label languageLabel;
         private ComboBox languageComboBox;
         private GroupBox configGroupBox;
@@ -805,7 +793,7 @@
         private Label localUrlLabel;
         private TextBox localUrlTextBox;
         private Label routeHelperLabel;
-        private FlowLayoutPanel routeHelperPanel;
+        private Panel routeHelperPanel;
         private Label serverProtocolLabel;
         private ComboBox serverProtocolComboBox;
         private Label toolProtocolLabel;

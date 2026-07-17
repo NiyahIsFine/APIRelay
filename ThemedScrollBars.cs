@@ -141,6 +141,10 @@ namespace APIRelay
                 var coordinate = (Orientation == Orientation.Vertical ? e.Y : e.X) - dragOffset;
                 var available = Math.Max(1, length - thumbLength);
                 Value = (int)Math.Round(Math.Clamp(coordinate, 0, available) * (double)maximum / available);
+
+                // A fast drag floods the queue with WM_MOUSEMOVE, which starves the WM_PAINT that
+                // Invalidate() schedules until the mouse stops. Force the repaint through now.
+                Update();
             }
 
             base.OnMouseMove(e);
@@ -153,6 +157,20 @@ namespace APIRelay
             hovered = ClientRectangle.Contains(e.Location);
             Invalidate();
             base.OnMouseUp(e);
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            if (Orientation == Orientation.Vertical && maximum > 0 && e.Delta != 0)
+            {
+                var wheelNotches = e.Delta / SystemInformation.MouseWheelScrollDelta;
+                if (wheelNotches != 0)
+                {
+                    Value -= wheelNotches * Math.Max(1, largeChange / 3);
+                }
+            }
+
+            base.OnMouseWheel(e);
         }
 
         private Rectangle GetThumbBounds()
@@ -205,6 +223,30 @@ namespace APIRelay
         {
             base.OnDataBindingComplete(e);
             SynchronizeScrollBars();
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            // ScrollBars.None disables DataGridView's built-in wheel-scroll handling (it isn't just
+            // hiding the native bars), so wheel scrolling has to be applied manually here.
+            var wheelNotches = e.Delta / SystemInformation.MouseWheelScrollDelta;
+            if (wheelNotches != 0 && Rows.Count > 0)
+            {
+                var linesPerNotch = SystemInformation.MouseWheelScrollLines <= 0 ? 3 : SystemInformation.MouseWheelScrollLines;
+                var newIndex = Math.Clamp(FirstDisplayedScrollingRowIndex - wheelNotches * linesPerNotch, 0, Rows.Count - 1);
+                try
+                {
+                    FirstDisplayedScrollingRowIndex = newIndex;
+                }
+                catch (InvalidOperationException)
+                {
+                    // The grid can reject a scroll request while its rows are changing.
+                }
+
+                SynchronizeScrollBars();
+            }
+
+            base.OnMouseWheel(e);
         }
 
         private void SynchronizeScrollBars()
@@ -279,6 +321,7 @@ namespace APIRelay
                     {
                         // The grid can reject a scroll request while its rows are changing.
                     }
+                    SynchronizeScrollBars();
                     return;
                 }
 
