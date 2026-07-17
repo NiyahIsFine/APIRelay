@@ -525,6 +525,7 @@ namespace APIRelay
             public decimal OutputCostPerMillion { get; set; }
             public decimal CacheHitCostPerMillion { get; set; }
             public decimal CacheCreationCostPerMillion { get; set; }
+            public bool Overwrite { get; set; }
         }
     }
 }

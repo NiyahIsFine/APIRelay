@@ -17,6 +17,8 @@ namespace APIRelay
         {
             private readonly ThemedDataGridView costsGrid = new();
             private readonly AppLanguage language;
+            private readonly Dictionary<string, ModelCostConfig> originalCosts;
+            private readonly HashSet<string> defaultModelNames;
 
             public ModelCostsForm(IEnumerable<ModelCostConfig> modelCosts, AppLanguage language)
             {
@@ -27,15 +29,15 @@ namespace APIRelay
                 Size = new Size(720, 460);
                 Padding = new Padding(12);
 
-                ModelCosts = modelCosts
-                    .Select(cost => new ModelCostConfig
-                    {
-                        ModelName = cost.ModelName,
-                        InputCostPerMillion = cost.InputCostPerMillion,
-                        OutputCostPerMillion = cost.OutputCostPerMillion,
-                        CacheHitCostPerMillion = cost.CacheHitCostPerMillion,
-                        CacheCreationCostPerMillion = cost.CacheCreationCostPerMillion
-                    })
+                originalCosts = modelCosts
+                    .Where(cost => !string.IsNullOrWhiteSpace(cost.ModelName))
+                    .GroupBy(cost => cost.ModelName.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => CloneModelCost(group.Last()), StringComparer.OrdinalIgnoreCase);
+                defaultModelNames = CreateDefaultModelCosts()
+                    .Select(cost => cost.ModelName)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                ModelCosts = originalCosts.Values
+                    .Select(CloneModelCost)
                     .ToList();
 
                 var layout = new TableLayoutPanel
@@ -113,6 +115,8 @@ namespace APIRelay
                 costsGrid.Columns.Add(CreateGridButtonColumn(AppTexts.GetText(language, TextId.Txt109), "editColumn", UiTheme.Accent));
                 costsGrid.Columns.Add(CreateGridButtonColumn(AppTexts.GetText(language, TextId.Txt110), "deleteColumn", UiTheme.Danger));
                 costsGrid.CellContentClick += CostsGrid_CellContentClick;
+                costsGrid.CellBeginEdit += CostsGrid_CellBeginEdit;
+                costsGrid.CellPainting += CostsGrid_CellPainting;
 
                 foreach (var cost in ModelCosts)
                 {
@@ -173,6 +177,45 @@ namespace APIRelay
 
             public List<ModelCostConfig> ModelCosts { get; private set; }
 
+            private void CostsGrid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0)
+                {
+                    return;
+                }
+
+                var column = costsGrid.Columns[e.ColumnIndex];
+                if (column.Name is not ("editColumn" or "deleteColumn"))
+                {
+                    return;
+                }
+
+                e.Paint(e.CellBounds, DataGridViewPaintParts.Background | DataGridViewPaintParts.Border);
+
+                var buttonBounds = Rectangle.Inflate(e.CellBounds, -5, -4);
+                var isDelete = column.Name == "deleteColumn";
+                var foreColor = isDelete ? UiTheme.Danger : UiTheme.Accent;
+                var borderColor = isDelete
+                    ? Color.FromArgb(0x5A, 0x3A, 0x40)
+                    : Color.FromArgb(0x3A, 0x4A, 0x66);
+
+                if (e.Graphics is not { } graphics)
+                {
+                    return;
+                }
+
+                UiTheme.PaintCard(graphics, buttonBounds, UiTheme.Surface, borderColor);
+                TextRenderer.DrawText(
+                    graphics,
+                    Convert.ToString(e.FormattedValue) ?? string.Empty,
+                    UiTheme.DefaultFont,
+                    buttonBounds,
+                    foreColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+                e.Handled = true;
+            }
+
             private void CostsGrid_CellContentClick(object? sender, DataGridViewCellEventArgs e)
             {
                 if (e.RowIndex < 0)
@@ -190,8 +233,31 @@ namespace APIRelay
 
                 if (columnName == "deleteColumn")
                 {
+                    var modelName = Convert.ToString(costsGrid.Rows[e.RowIndex].Cells["modelNameColumn"].Value)?.Trim() ?? string.Empty;
+                    if (defaultModelNames.Contains(modelName))
+                    {
+                        MessageBox.Show(AppTexts.GetText(language, TextId.Txt135), AppTexts.GetText(language, TextId.Txt114), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
                     costsGrid.Rows.RemoveAt(e.RowIndex);
                 }
+            }
+
+            private void CostsGrid_CellBeginEdit(object? sender, DataGridViewCellCancelEventArgs e)
+            {
+                if (e.RowIndex < 0 || costsGrid.Columns[e.ColumnIndex].Name != "modelNameColumn")
+                {
+                    return;
+                }
+
+                var modelName = Convert.ToString(costsGrid.Rows[e.RowIndex].Cells["modelNameColumn"].Value)?.Trim() ?? string.Empty;
+                if (!defaultModelNames.Contains(modelName))
+                {
+                    return;
+                }
+
+                e.Cancel = true;
             }
 
             private void OkButton_Click(object? sender, EventArgs e)
@@ -221,17 +287,44 @@ namespace APIRelay
                         return;
                     }
 
+                    if (updatedCosts.Any(cost => string.Equals(cost.ModelName, modelName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        MessageBox.Show(AppTexts.GetText(language, TextId.Txt136), AppTexts.GetText(language, TextId.Txt114), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        DialogResult = DialogResult.None;
+                        return;
+                    }
+
                     updatedCosts.Add(new ModelCostConfig
                     {
                         ModelName = modelName,
                         InputCostPerMillion = inputCost,
                         OutputCostPerMillion = outputCost,
                         CacheHitCostPerMillion = cacheHitCost,
-                        CacheCreationCostPerMillion = cacheCreationCost
+                        CacheCreationCostPerMillion = cacheCreationCost,
+                        Overwrite = IsModifiedOrAdded(modelName, inputCost, outputCost, cacheHitCost, cacheCreationCost)
                     });
                 }
 
                 ModelCosts = updatedCosts;
+            }
+
+            private bool IsModifiedOrAdded(
+                string modelName,
+                decimal inputCost,
+                decimal outputCost,
+                decimal cacheHitCost,
+                decimal cacheCreationCost)
+            {
+                if (!originalCosts.TryGetValue(modelName, out var originalCost))
+                {
+                    return true;
+                }
+
+                return originalCost.Overwrite
+                    || originalCost.InputCostPerMillion != inputCost
+                    || originalCost.OutputCostPerMillion != outputCost
+                    || originalCost.CacheHitCostPerMillion != cacheHitCost
+                    || originalCost.CacheCreationCostPerMillion != cacheCreationCost;
             }
 
             private static bool TryReadDecimal(object? value, out decimal result)
@@ -243,26 +336,24 @@ namespace APIRelay
 
             private static DataGridViewButtonColumn CreateGridButtonColumn(string label, string name, Color foreColor)
             {
-                var cell = new DataGridViewButtonCell { FlatStyle = FlatStyle.Flat };
-                var column = new DataGridViewButtonColumn
+                return new DataGridViewButtonColumn
                 {
                     HeaderText = label,
                     Name = name,
                     Text = label,
                     UseColumnTextForButtonValue = true,
                     FillWeight = 56F,
-                    CellTemplate = cell,
+                    FlatStyle = FlatStyle.Flat,
                     DefaultCellStyle = new DataGridViewCellStyle
                     {
                         Alignment = DataGridViewContentAlignment.MiddleCenter,
                         ForeColor = foreColor,
-                        BackColor = UiTheme.Surface,
-                        SelectionBackColor = UiTheme.Surface,
+                        BackColor = UiTheme.Panel,
+                        SelectionBackColor = UiTheme.GridSelection,
                         SelectionForeColor = foreColor,
-                        Padding = new Padding(6, 0, 6, 0)
+                        Padding = Padding.Empty
                     }
                 };
-                return column;
             }
         }
     }

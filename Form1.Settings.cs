@@ -124,34 +124,20 @@ namespace APIRelay
         {
             try
             {
-                modelCosts.Clear();
-
+                var persistedCosts = new List<ModelCostConfig>();
                 if (File.Exists(modelCostsPath))
                 {
-                    modelCosts.AddRange(JsonSerializer.Deserialize<List<ModelCostConfig>>(File.ReadAllText(modelCostsPath)) ?? new List<ModelCostConfig>());
+                    persistedCosts.AddRange(JsonSerializer.Deserialize<List<ModelCostConfig>>(File.ReadAllText(modelCostsPath)) ?? new List<ModelCostConfig>());
                 }
                 else if (legacyModelCosts?.Count > 0)
                 {
-                    modelCosts.AddRange(legacyModelCosts);
-                    SaveModelCosts();
-                    AppendInternalLog("Migrated model costs from settings file to separate model-costs file.");
+                    persistedCosts.AddRange(legacyModelCosts);
+                    AppendInternalLog("Migrating model costs from settings file to separate model-costs file.");
                 }
 
-                if (modelCosts.Count == 0)
-                {
-                    modelCosts.AddRange(CreateDefaultModelCosts());
-                    SaveModelCosts();
-                    AppendInternalLog("Model costs were missing or empty; default model-costs file created.");
-                    return;
-                }
-
-                modelCosts.RemoveAll(cost => string.IsNullOrWhiteSpace(cost.ModelName));
-                if (modelCosts.Count == 0)
-                {
-                    modelCosts.AddRange(CreateDefaultModelCosts());
-                    SaveModelCosts();
-                    AppendInternalLog("Model costs contained no usable model names; default model-costs file created.");
-                }
+                modelCosts.Clear();
+                modelCosts.AddRange(MergeModelCosts(persistedCosts, CreateDefaultModelCosts()));
+                SaveModelCosts();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
             {
@@ -161,6 +147,60 @@ namespace APIRelay
                 modelCosts.AddRange(CreateDefaultModelCosts());
                 SaveModelCosts();
             }
+        }
+
+        private static List<ModelCostConfig> MergeModelCosts(
+            IEnumerable<ModelCostConfig> persistedCosts,
+            IEnumerable<ModelCostConfig> defaultCosts)
+        {
+            var persistedByName = persistedCosts
+                .Where(cost => !string.IsNullOrWhiteSpace(cost.ModelName))
+                .GroupBy(cost => cost.ModelName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.LastOrDefault(cost => cost.Overwrite) ?? group.Last(),
+                    StringComparer.OrdinalIgnoreCase);
+            var defaultByName = defaultCosts
+                .Where(cost => !string.IsNullOrWhiteSpace(cost.ModelName))
+                .ToDictionary(cost => cost.ModelName, StringComparer.OrdinalIgnoreCase);
+            var mergedCosts = new List<ModelCostConfig>();
+
+            foreach (var defaultCost in defaultByName.Values)
+            {
+                if (persistedByName.TryGetValue(defaultCost.ModelName, out var persistedCost) && persistedCost.Overwrite)
+                {
+                    mergedCosts.Add(CloneModelCost(persistedCost));
+                }
+                else
+                {
+                    var currentDefault = CloneModelCost(defaultCost);
+                    currentDefault.Overwrite = false;
+                    mergedCosts.Add(currentDefault);
+                }
+            }
+
+            foreach (var persistedCost in persistedByName.Values)
+            {
+                if (!defaultByName.ContainsKey(persistedCost.ModelName))
+                {
+                    mergedCosts.Add(CloneModelCost(persistedCost));
+                }
+            }
+
+            return mergedCosts;
+        }
+
+        private static ModelCostConfig CloneModelCost(ModelCostConfig cost)
+        {
+            return new ModelCostConfig
+            {
+                ModelName = cost.ModelName.Trim(),
+                InputCostPerMillion = cost.InputCostPerMillion,
+                OutputCostPerMillion = cost.OutputCostPerMillion,
+                CacheHitCostPerMillion = cost.CacheHitCostPerMillion,
+                CacheCreationCostPerMillion = cost.CacheCreationCostPerMillion,
+                Overwrite = cost.Overwrite
+            };
         }
 
         private void SaveModelCosts()
@@ -176,7 +216,8 @@ namespace APIRelay
                         InputCostPerMillion = cost.InputCostPerMillion,
                         OutputCostPerMillion = cost.OutputCostPerMillion,
                         CacheHitCostPerMillion = cost.CacheHitCostPerMillion,
-                        CacheCreationCostPerMillion = cost.CacheCreationCostPerMillion
+                        CacheCreationCostPerMillion = cost.CacheCreationCostPerMillion,
+                        Overwrite = cost.Overwrite
                     })
                     .ToList();
 
@@ -679,27 +720,33 @@ namespace APIRelay
             {
                 CreateModelCost("claude-3-5-haiku-20241022", 0.80m, 4m, 0.08m, 1m),
                 CreateModelCost("claude-3-5-sonnet-20241022", 3m, 15m, 0.30m, 3.75m),
+                CreateModelCost("claude-haiku-4-5", 1m, 5m, 0.10m, 1.25m),
                 CreateModelCost("claude-haiku-4-5-20251001", 1m, 5m, 0.10m, 1.25m),
+                CreateModelCost("claude-mythos-5", 10m, 50m, 1m, 12.50m),
                 CreateModelCost("claude-opus-4-20250514", 15m, 75m, 1.50m, 18.75m),
                 CreateModelCost("claude-opus-4-1-20250805", 15m, 75m, 1.50m, 18.75m),
+                CreateModelCost("claude-opus-4-5", 5m, 25m, 0.50m, 6.25m),
                 CreateModelCost("claude-opus-4-5-20251101", 5m, 25m, 0.50m, 6.25m),
+                CreateModelCost("claude-opus-4-6", 5m, 25m, 0.50m, 6.25m),
                 CreateModelCost("claude-opus-4-6-20260206", 5m, 25m, 0.50m, 6.25m),
                 CreateModelCost("claude-opus-4-7", 5m, 25m, 0.50m, 6.25m),
                 CreateModelCost("claude-sonnet-4-20250514", 3m, 15m, 0.30m, 3.75m),
                 CreateModelCost("claude-sonnet-4-5-20250929", 3m, 15m, 0.30m, 3.75m),
+                CreateModelCost("claude-sonnet-4-6", 3m, 15m, 0.30m, 3.75m),
                 CreateModelCost("claude-sonnet-4-6-20260217", 3m, 15m, 0.30m, 3.75m),
+                CreateModelCost("claude-sonnet-5", 3m, 15m, 0.30m, 3.75m),
                 CreateModelCost("codestral-2508", 0.30m, 0.90m, 0.03m, 0m),
                 CreateModelCost("codex-mini", 0.75m, 3m, 0.025m, 0m),
                 CreateModelCost("command-a", 2.50m, 10m, 0m, 0m),
                 CreateModelCost("command-r", 0.15m, 0.60m, 0m, 0m),
                 CreateModelCost("command-r-plus", 2.50m, 10m, 0m, 0m),
-                CreateModelCost("deepseek-chat", 0.27m, 1.10m, 0.07m, 0m),
-                CreateModelCost("deepseek-reasoner", 0.55m, 2.19m, 0.14m, 0m),
+                CreateModelCost("deepseek-chat", 0.14m, 0.28m, 0.0028m, 0m),
+                CreateModelCost("deepseek-reasoner", 0.14m, 0.28m, 0.0028m, 0m),
                 CreateModelCost("deepseek-v3", 0.28m, 1.11m, 0.028m, 0m),
                 CreateModelCost("deepseek-v3.1", 0.55m, 1.67m, 0.055m, 0m),
                 CreateModelCost("deepseek-v3.2", 0.28m, 0.42m, 0.028m, 0m),
-                CreateModelCost("deepseek-v4-flash", 0.14m, 0.28m, 0.028m, 0m),
-                CreateModelCost("deepseek-v4-pro", 1.68m, 3.36m, 0.14m, 0m),
+                CreateModelCost("deepseek-v4-flash", 0.14m, 0.28m, 0.0028m, 0m),
+                CreateModelCost("deepseek-v4-pro", 0.435m, 0.87m, 0.003625m, 0m),
                 CreateModelCost("devstral-2-2512", 0.40m, 0.90m, 0.04m, 0m),
                 CreateModelCost("devstral-medium", 0.40m, 2m, 0.04m, 0m),
                 CreateModelCost("devstral-small-1.1", 0.07m, 0.28m, 0.01m, 0m),
@@ -757,7 +804,9 @@ namespace APIRelay
                 CreateModelCost("gpt-5.4", 2.50m, 15m, 0.25m, 0m),
                 CreateModelCost("gpt-5.4-mini", 0.75m, 4.50m, 0.075m, 0m),
                 CreateModelCost("gpt-5.4-nano", 0.20m, 1.25m, 0.02m, 0m),
+                CreateModelCost("gpt-5.4-pro", 30m, 180m, 3m, 0m),
                 CreateModelCost("gpt-5.5", 5m, 30m, 0.50m, 0m),
+                CreateModelCost("gpt-5.5-pro", 30m, 180m, 3m, 0m),
                 CreateModelCost("gpt-5.5-low", 5m, 30m, 0.50m, 0m),
                 CreateModelCost("gpt-5.5-medium", 5m, 30m, 0.50m, 0m),
                 CreateModelCost("gpt-5.5-high", 5m, 30m, 0.50m, 0m),
@@ -771,13 +820,14 @@ namespace APIRelay
                 CreateModelCost("gemini-3-pro-preview", 2m, 12m, 0.2m, 0m),
                 CreateModelCost("gemini-3.1-flash-lite-preview", 0.25m, 1.50m, 0.025m, 0m),
                 CreateModelCost("gemini-3.1-pro-preview", 2m, 12m, 0.20m, 0m),
+                CreateModelCost("gemini-3.5-flash", 1.50m, 9m, 0m, 0m),
                 CreateModelCost("grok-3", 3m, 15m, 0.75m, 0m),
                 CreateModelCost("grok-3-mini", 0.25m, 0.50m, 0.075m, 0m),
                 CreateModelCost("grok-4", 3m, 15m, 0.75m, 0m),
                 CreateModelCost("grok-4-1-fast-non-reasoning", 0.20m, 0.50m, 0.05m, 0m),
                 CreateModelCost("grok-4-1-fast-reasoning", 0.20m, 0.50m, 0.05m, 0m),
-                CreateModelCost("grok-4.20-0309-non-reasoning", 2m, 6m, 0.20m, 0m),
-                CreateModelCost("grok-4.20-0309-reasoning", 2m, 6m, 0.20m, 0m),
+                CreateModelCost("grok-4.20-0309-non-reasoning", 1.25m, 2.50m, 0.20m, 0m),
+                CreateModelCost("grok-4.20-0309-reasoning", 1.25m, 2.50m, 0.20m, 0m),
                 CreateModelCost("grok-code-fast-1", 0.20m, 1.50m, 0.02m, 0m),
                 CreateModelCost("kimi-k2-0905", 0.55m, 2.20m, 0.10m, 0m),
                 CreateModelCost("kimi-k2-thinking", 0.55m, 2.20m, 0.10m, 0m),
@@ -799,10 +849,13 @@ namespace APIRelay
                 CreateModelCost("mistral-small-3.2-24b", 0.075m, 0.20m, 0.01m, 0m),
                 CreateModelCost("o1", 15m, 60m, 7.50m, 0m),
                 CreateModelCost("o1-mini", 0.55m, 2.20m, 0.55m, 0m),
+                CreateModelCost("o1-pro", 15m, 60m, 1.50m, 0m),
                 CreateModelCost("o3", 2m, 8m, 0.50m, 0m),
+                CreateModelCost("o3-deep-research", 10m, 40m, 1m, 0m),
                 CreateModelCost("o3-mini", 0.55m, 2.20m, 0.55m, 0m),
                 CreateModelCost("o3-pro", 20m, 80m, 0m, 0m),
                 CreateModelCost("o4-mini", 1.10m, 4.40m, 0.275m, 0m),
+                CreateModelCost("o4-mini-deep-research", 2m, 8m, 0.20m, 0m),
                 CreateModelCost("qwq-32b", 0.20m, 0.60m, 0m, 0m),
                 CreateModelCost("qwq-plus", 0.80m, 2.40m, 0m, 0m),
                 CreateModelCost("qwen3-235b-a22b", 0.70m, 8.40m, 0m, 0m),

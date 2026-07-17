@@ -138,6 +138,8 @@ namespace APIRelay
         Txt132, // 转协议时缓存
         Txt133, // 端口被占用
         Txt134, // 运行中只读提示
+        Txt135, // 内置模型不可删除
+        Txt136, // 模型名称重复
     }
 
     internal static class AppTexts
@@ -278,6 +280,8 @@ namespace APIRelay
             [TextId.Txt132] = ("Cache on conversion", "转协议时缓存"),
             [TextId.Txt133] = ("Port {0} is already in use by another program. Stop the other program or change the local listen address.\r\n\r\nIf APIRelay is already running, close that instance first.", "端口 {0} 已被其他程序占用。请关闭占用程序或更换本地监听地址。\r\n\r\n如果 APIRelay 已经在运行，请先关闭另一个实例。"),
             [TextId.Txt134] = ("The relay is running, so provider settings are read-only. Stop the relay to make changes.", "代理正在运行，供应商配置为只读。停止代理后即可修改。"),
+            [TextId.Txt135] = ("Built-in models cannot be deleted.", "内置模型不能删除。"),
+            [TextId.Txt136] = ("Model names must be unique.", "模型名称不能重复。"),
         };
 
         public static string GetText(AppLanguage language, TextId id, params object[] args)
