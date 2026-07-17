@@ -317,6 +317,37 @@ public sealed class ManagedToolLogicTests
         Assert.Equal("claude-original-7", env.GetProperty("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME").GetString());
     }
 
+    [Fact]
+    public void AnthropicMessageStartUsageReadsNestedModelAndCacheTokens()
+    {
+        // Anthropic streams usage/model nested under "message" in message_start. Reading only the
+        // event root misses them, so the record would fall back to the request alias. The extractor
+        // must recover the real model and the cache tokens from the nested message object.
+        var eventData = """
+            {"type":"message_start","message":{"id":"msg_x","type":"message","role":"assistant","model":"claude-fable-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":2,"output_tokens":0,"cache_read_input_tokens":59676,"cache_creation_input_tokens":1359}}}
+            """;
+
+        var usage = StaticMethod("ExtractUsageFromEventData").Invoke(null, [eventData])!;
+        var usageType = FormType.GetNestedType("UsageInfo", BindingFlags.NonPublic)!;
+        Assert.Equal("claude-fable-5", usageType.GetProperty("Model")!.GetValue(usage));
+        Assert.Equal(59676, usageType.GetProperty("CachedTokens")!.GetValue(usage));
+        Assert.Equal(1359, usageType.GetProperty("CacheCreationTokens")!.GetValue(usage));
+        Assert.True((bool)usageType.GetProperty("CacheTokensSeparateFromInput")!.GetValue(usage)!);
+    }
+
+    [Fact]
+    public void AnthropicMessageDeltaUsageKeepsOutputTokensAtRoot()
+    {
+        // message_delta carries usage (output_tokens only) at the event root with no model; it must
+        // still parse so it can be merged with the message_start model upstream.
+        var eventData = """{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":463}}""";
+
+        var usage = StaticMethod("ExtractUsageFromEventData").Invoke(null, [eventData])!;
+        var usageType = FormType.GetNestedType("UsageInfo", BindingFlags.NonPublic)!;
+        Assert.Equal(463, usageType.GetProperty("CompletionTokens")!.GetValue(usage));
+        Assert.Equal(string.Empty, usageType.GetProperty("Model")!.GetValue(usage));
+    }
+
     private static MethodInfo StaticMethod(string name)
     {
         return FormType.GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)

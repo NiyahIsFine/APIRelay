@@ -109,6 +109,13 @@ namespace APIRelay
                 return true;
             }
 
+            // Anthropic streaming nests the usage and model under "message" (e.g. message_start),
+            // so a root-level read misses them and the record would fall back to the request alias.
+            if (root.TryGetProperty("message", out var messageElement) && TryReadUsageFromElement(messageElement, out usage))
+            {
+                return true;
+            }
+
             return false;
         }
 
