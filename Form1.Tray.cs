@@ -40,6 +40,7 @@ namespace APIRelay
             contextMenu.Items.Add(toggleBubbleMenuItem);
             contextMenu.Items.Add(new ToolStripSeparator());
             contextMenu.Items.Add(exitMenuItem);
+            UiTheme.StyleContextMenuStrip(contextMenu);
 
             trayIcon = new NotifyIcon
             {
@@ -64,7 +65,7 @@ namespace APIRelay
 
         private void StartRelayOnLaunchIfEnabled()
         {
-            if (autoStartRelayQueued || !autoStartRelayCheckBox.Checked)
+            if (autoStartRelayQueued || !relayShouldRun)
             {
                 return;
             }
@@ -104,6 +105,7 @@ namespace APIRelay
 
                 UpdateUsageBubble();
                 usageBubble.Show();
+                usageBubble.EnsureOnScreen();
                 usageBubble.KeepAboveNormalWindows();
             }
             else
@@ -155,7 +157,7 @@ namespace APIRelay
 
             var location = savedUsageBubbleLocation.Value;
             var bounds = new Rectangle(location, bubble.Size);
-            if (Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(bounds)))
+            if (Screen.AllScreens.Any(screen => screen.WorkingArea.Contains(bounds)))
             {
                 bubble.SetStartupLocation(location);
             }

@@ -7,6 +7,7 @@ APIRelay is a simple Windows desktop app for relaying AI API requests through a 
 - Local API relay with a configurable listen address
 - Supports OpenAI-compatible Chat Completions, OpenAI Responses, and Anthropic Messages routes
 - Basic protocol conversion between supported API formats
+- Managed Claude and Codex tool routes with configurable upstream model mappings
 - Streaming response support
 - Request history, token usage, latency, and estimated cost tracking
 - Editable model price settings

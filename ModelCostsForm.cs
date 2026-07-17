@@ -15,7 +15,7 @@ namespace APIRelay
     {
         private sealed class ModelCostsForm : Form
         {
-            private readonly DataGridView costsGrid = new();
+            private readonly ThemedDataGridView costsGrid = new();
             private readonly AppLanguage language;
 
             public ModelCostsForm(IEnumerable<ModelCostConfig> modelCosts, AppLanguage language)
@@ -44,9 +44,9 @@ namespace APIRelay
                     ColumnCount = 1,
                     RowCount = 3
                 };
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
                 layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
                 var headerPanel = new FlowLayoutPanel
                 {
@@ -54,10 +54,13 @@ namespace APIRelay
                     WrapContents = false
                 };
 
+                var addText = AppTexts.GetText(language, TextId.Txt102);
                 var addButton = new Button
                 {
-                    Text = AppTexts.GetText(language, TextId.Txt102),
-                    Size = new Size(80, 28),
+                    Text = addText,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    MinimumSize = new Size(UiTheme.GetButtonWidth(addText, minimumWidth: 80), UiTheme.GetButtonHeight()),
                     Margin = new Padding(0, 1, 8, 1)
                 };
                 addButton.Click += (_, _) => costsGrid.Rows.Add(string.Empty, "0", "0", "0", "0");
@@ -107,22 +110,8 @@ namespace APIRelay
                     Name = "cacheCreationCostColumn",
                     FillWeight = 95F
                 });
-                costsGrid.Columns.Add(new DataGridViewButtonColumn
-                {
-                    HeaderText = AppTexts.GetText(language, TextId.Txt109),
-                    Name = "editColumn",
-                    Text = AppTexts.GetText(language, TextId.Txt109),
-                    UseColumnTextForButtonValue = true,
-                    FillWeight = 45F
-                });
-                costsGrid.Columns.Add(new DataGridViewButtonColumn
-                {
-                    HeaderText = AppTexts.GetText(language, TextId.Txt110),
-                    Name = "deleteColumn",
-                    Text = AppTexts.GetText(language, TextId.Txt110),
-                    UseColumnTextForButtonValue = true,
-                    FillWeight = 45F
-                });
+                costsGrid.Columns.Add(CreateGridButtonColumn(AppTexts.GetText(language, TextId.Txt109), "editColumn", UiTheme.Accent));
+                costsGrid.Columns.Add(CreateGridButtonColumn(AppTexts.GetText(language, TextId.Txt110), "deleteColumn", UiTheme.Danger));
                 costsGrid.CellContentClick += CostsGrid_CellContentClick;
 
                 foreach (var cost in ModelCosts)
@@ -142,21 +131,28 @@ namespace APIRelay
                     WrapContents = false
                 };
 
+                var buttonHeight = UiTheme.GetButtonHeight();
+                var okText = AppTexts.GetText(language, TextId.Txt111);
                 var okButton = new Button
                 {
-                    Text = AppTexts.GetText(language, TextId.Txt111),
+                    Text = okText,
                     DialogResult = DialogResult.OK,
-                    Size = new Size(80, 28),
-                    Margin = new Padding(8, 7, 0, 0)
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    MinimumSize = new Size(UiTheme.GetButtonWidth(okText, minimumWidth: 80), buttonHeight),
+                    Margin = new Padding(8, 5, 0, 0)
                 };
                 okButton.Click += OkButton_Click;
 
+                var cancelText = AppTexts.GetText(language, TextId.Txt112);
                 var cancelButton = new Button
                 {
-                    Text = AppTexts.GetText(language, TextId.Txt112),
+                    Text = cancelText,
                     DialogResult = DialogResult.Cancel,
-                    Size = new Size(80, 28),
-                    Margin = new Padding(8, 7, 0, 0)
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    MinimumSize = new Size(UiTheme.GetButtonWidth(cancelText, minimumWidth: 80), buttonHeight),
+                    Margin = new Padding(8, 5, 0, 0)
                 };
 
                 buttonPanel.Controls.Add(okButton);
@@ -169,6 +165,10 @@ namespace APIRelay
 
                 AcceptButton = okButton;
                 CancelButton = cancelButton;
+
+                UiTheme.StyleDialog(this);
+                costsGrid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCellsExceptHeaders;
+                costsGrid.RowTemplate.Height = UiTheme.GetButtonHeight();
             }
 
             public List<ModelCostConfig> ModelCosts { get; private set; }
@@ -239,6 +239,30 @@ namespace APIRelay
                 var text = Convert.ToString(value)?.Trim();
                 return decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out result)
                     || decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out result);
+            }
+
+            private static DataGridViewButtonColumn CreateGridButtonColumn(string label, string name, Color foreColor)
+            {
+                var cell = new DataGridViewButtonCell { FlatStyle = FlatStyle.Flat };
+                var column = new DataGridViewButtonColumn
+                {
+                    HeaderText = label,
+                    Name = name,
+                    Text = label,
+                    UseColumnTextForButtonValue = true,
+                    FillWeight = 56F,
+                    CellTemplate = cell,
+                    DefaultCellStyle = new DataGridViewCellStyle
+                    {
+                        Alignment = DataGridViewContentAlignment.MiddleCenter,
+                        ForeColor = foreColor,
+                        BackColor = UiTheme.Surface,
+                        SelectionBackColor = UiTheme.Surface,
+                        SelectionForeColor = foreColor,
+                        Padding = new Padding(6, 0, 6, 0)
+                    }
+                };
+                return column;
             }
         }
     }

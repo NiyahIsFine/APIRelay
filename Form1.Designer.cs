@@ -36,7 +36,7 @@
             clearAllDatesButton = new Button();
             topToolBarSpacer = new Label();
             languageLabel = new Label();
-            languageComboBox = new ComboBox();
+            languageComboBox = new ThemeComboBox();
             configGroupBox = new GroupBox();
             configLayout = new TableLayoutPanel();
             localUrlLabel = new Label();
@@ -44,13 +44,13 @@
             routeHelperLabel = new Label();
             routeHelperPanel = new FlowLayoutPanel();
             serverProtocolLabel = new Label();
-            serverProtocolComboBox = new ComboBox();
+            serverProtocolComboBox = new ThemeComboBox();
             toolProtocolLabel = new Label();
-            toolProtocolComboBox = new ComboBox();
+            toolProtocolComboBox = new ThemeComboBox();
             routeUrlTextBox = new TextBox();
             copyRouteUrlButton = new Button();
             logOptionsPanel = new FlowLayoutPanel();
-            autoStartRelayCheckBox = new CheckBox();
+            autoStartRelayCheckBox = new ThemeCheckBox();
             openLogButton = new Button();
             openLogDirButton = new Button();
             buttonPanel = new FlowLayoutPanel();
@@ -74,8 +74,8 @@
             dailyChartPanel = new BufferedChartPanel();
             recordFilterPanel = new FlowLayoutPanel();
             recordDateLabel = new Label();
-            recordDateComboBox = new ComboBox();
-            requestGrid = new DataGridView();
+            recordDateComboBox = new ThemeComboBox();
+            requestGrid = new ThemedDataGridView();
             timeColumn = new DataGridViewTextBoxColumn();
             modelColumn = new DataGridViewTextBoxColumn();
             pathColumn = new DataGridViewTextBoxColumn();
@@ -359,7 +359,6 @@
             // 
             // logOptionsPanel
             // 
-            logOptionsPanel.Controls.Add(autoStartRelayCheckBox);
             logOptionsPanel.Controls.Add(openLogButton);
             logOptionsPanel.Controls.Add(openLogDirButton);
             logOptionsPanel.Dock = DockStyle.Fill;
@@ -839,7 +838,7 @@
         private FlowLayoutPanel recordFilterPanel;
         private Label recordDateLabel;
         private ComboBox recordDateComboBox;
-        private DataGridView requestGrid;
+        private ThemedDataGridView requestGrid;
         private DataGridViewTextBoxColumn timeColumn;
         private DataGridViewTextBoxColumn modelColumn;
         private DataGridViewTextBoxColumn pathColumn;

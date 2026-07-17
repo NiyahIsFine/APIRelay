@@ -18,12 +18,18 @@ namespace APIRelay
             startButton.Enabled = !running;
             stopButton.Enabled = running;
             statusValueLabel.Text = running ? GetText(TextId.Txt32) : GetText(TextId.Txt33);
-            statusValueLabel.ForeColor = running ? Color.ForestGreen : Color.Firebrick;
+            statusValueLabel.ForeColor = running ? UiTheme.Success : UiTheme.Danger;
             localUrlTextBox.ReadOnly = running;
         }
 
-        private void StopRelay()
+        private void StopRelay(bool clearRunIntent = true)
         {
+            if (clearRunIntent)
+            {
+                relayShouldRun = false;
+                SaveSettings();
+            }
+
             listenerCancellation?.Cancel();
 
             try
@@ -39,6 +45,9 @@ namespace APIRelay
             activeConfig = null;
             listenerCancellation?.Dispose();
             listenerCancellation = null;
+            RestoreManagedToolConfigurations();
+            DeactivateManagedToolRoutes();
+            managedRuntimeRoutes = new Dictionary<string, ManagedRuntimeRoute>(StringComparer.Ordinal);
             SetRunningState(false);
         }
 
@@ -61,7 +70,8 @@ namespace APIRelay
                         SelectRouteProtocol(serverProtocolComboBox, settings.RouteHelperServerProtocol);
                         SelectRouteProtocol(toolProtocolComboBox, settings.RouteHelperToolProtocol);
                         UpdateRouteUrlPreview();
-                        autoStartRelayCheckBox.Checked = settings.AutoStartRelay;
+                        autoStartRelayCheckBox.Checked = false;
+                        relayShouldRun = settings.RelayShouldRun;
                         SetProtocolTraceVisible(settings.ProtocolTraceVisible, saveSettings: false);
                         currentLanguage = TryParseLanguage(settings.Language, out var language) ? language : AppLanguage.English;
                         SelectLanguage(currentLanguage);
@@ -82,6 +92,15 @@ namespace APIRelay
                         }
 
                         EnsureProviderConfigDefaults();
+
+                        registeredModels.Clear();
+                        registeredModels.AddRange((settings.RegisteredModels ?? new List<RegisteredModelConfig>())
+                            .Where(model => !string.IsNullOrWhiteSpace(model.ModelId))
+                            .GroupBy(model => (model.Protocol, model.ModelId), new RegisteredModelIdentityComparer())
+                            .Select(group => group.First()));
+                        toolConfiguration = settings.ToolConfiguration ?? new ToolConfigurationSettings();
+                        toolConfiguration.Claude ??= new ClaudeToolSettings();
+                        toolConfiguration.Codex ??= new CodexToolSettings();
                     }
                 }
                 else
@@ -247,10 +266,23 @@ namespace APIRelay
                     Language = currentLanguage.ToString(),
                     RouteHelperServerProtocol = GetSelectedRouteProtocol(serverProtocolComboBox) ?? ApiRouteKind.ChatCompletions,
                     RouteHelperToolProtocol = GetSelectedRouteProtocol(toolProtocolComboBox),
-                    AutoStartRelay = autoStartRelayCheckBox.Checked,
+                    AutoStartRelay = false,
+                    RelayShouldRun = relayShouldRun,
                     ProtocolTraceVisible = protocolTraceVisible,
                     UsageBubbleLocationX = savedUsageBubbleLocation?.X,
                     UsageBubbleLocationY = savedUsageBubbleLocation?.Y,
+                    RegisteredModels = registeredModels
+                        .OrderBy(model => model.Protocol)
+                        .ThenBy(model => model.ModelId, StringComparer.Ordinal)
+                        .Select(model => new RegisteredModelConfig
+                        {
+                            Protocol = model.Protocol,
+                            ModelId = model.ModelId,
+                            DisplayName = model.DisplayName,
+                            RegisteredAtUtc = model.RegisteredAtUtc
+                        })
+                        .ToList(),
+                    ToolConfiguration = toolConfiguration,
                     ProviderConfigs = providerConfigs.Values
                         .OrderBy(config => config.RouteKind)
                         .Select(config => new ProviderEndpointConfig
@@ -269,13 +301,32 @@ namespace APIRelay
                         .ToList()
                 };
 
-                File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
+                WriteAllTextAtomically(settingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
                 AppendInternalLog($"Settings saved. ProviderConfigs={settings.ProviderConfigs.Count}; AutoStart={settings.AutoStartRelay}");
             }
             catch (Exception ex)
             {
                 AppendInternalException("Failed to save settings.", ex);
                 AppendLog(GetText(TextId.Txt94, ex.Message), true);
+            }
+        }
+
+        private static void WriteAllTextAtomically(string path, string content)
+        {
+            var directory = Path.GetDirectoryName(path) ?? throw new InvalidOperationException("A storage directory is required.");
+            Directory.CreateDirectory(directory);
+            var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllText(temporaryPath, content, new UTF8Encoding(false));
+                File.Move(temporaryPath, path, true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
             }
         }
 
@@ -298,7 +349,7 @@ namespace APIRelay
                 Visible = false
             };
 
-            protocolTraceCheckBox = new CheckBox
+            protocolTraceCheckBox = new ThemeCheckBox
             {
                 AutoSize = true,
                 Checked = true,
@@ -762,7 +813,13 @@ namespace APIRelay
                 CreateModelCost("qwen3-max", 0.78m, 3.90m, 0m, 0m),
                 CreateModelCost("qwen3.5-plus", 0.26m, 1.56m, 0m, 0m),
                 CreateModelCost("qwen3.6-plus", 0.325m, 1.95m, 0m, 0m),
-                CreateModelCost("step-3.5-flash", 0.10m, 0.30m, 0.02m, 0m)
+                CreateModelCost("step-3.5-flash", 0.10m, 0.30m, 0.02m, 0m),
+                CreateModelCost("claude-opus-4-8", 5m, 25m, 0.5m, 6.25m),
+                CreateModelCost("claude-fable-5", 10m, 50m, 1m, 12.5m),
+                CreateModelCost("glm-5.2", 1.18m, 4.14m, 0.3m, 0m),
+                CreateModelCost("gpt-5.6-luna", 1m, 6m, 0.1m, 1.25m),
+                CreateModelCost("gpt-5.6-terra", 2.5m, 15m, 0.25m, 3.125m),
+                CreateModelCost("gpt-5.6-sol", 5m, 30m, 0.5m, 6.25m)
             };
         }
 

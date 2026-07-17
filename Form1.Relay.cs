@@ -3,6 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -24,7 +25,18 @@ namespace APIRelay
             if (!Uri.TryCreate(NormalizePrefix(localUrlTextBox.Text), UriKind.Absolute, out var localUri) || localUri.Scheme != Uri.UriSchemeHttp)
             {
                 AppendInternalLog($"Start rejected because local URL is invalid. Value={localUrlTextBox.Text}");
+                relayShouldRun = false;
+                SaveSettings();
                 MessageBox.Show(GetText(TextId.Txt57), GetText(TextId.Txt58), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return Task.CompletedTask;
+            }
+
+            if (!IsLocalPortAvailable(localUri.Port))
+            {
+                AppendInternalLog($"Start rejected because port {localUri.Port} is already in use.");
+                relayShouldRun = false;
+                SaveSettings();
+                MessageBox.Show(GetText(TextId.Txt133, localUri.Port), GetText(TextId.Txt63), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return Task.CompletedTask;
             }
 
@@ -36,7 +48,10 @@ namespace APIRelay
 
             try
             {
+                ApplyEnabledManagedToolConfigurations(activeConfig.LocalUri);
                 listener.Start();
+                relayShouldRun = true;
+                SaveSettings();
                 AppendInternalLog($"Listener started. LocalUri={activeConfig.LocalUri}");
                 SetRunningState(true);
                 AppendLog(GetText(TextId.Txt59, activeConfig.LocalUri), true);
@@ -53,6 +68,7 @@ namespace APIRelay
             catch (ObjectDisposedException)
             {
                 AppendInternalLog("Listener start ignored because listener was disposed.");
+                StopRelay();
             }
             catch (Exception ex)
             {
@@ -62,6 +78,21 @@ namespace APIRelay
             }
 
             return Task.CompletedTask;
+        }
+
+        private static bool IsLocalPortAvailable(int port)
+        {
+            try
+            {
+                var probe = new TcpListener(IPAddress.Loopback, port);
+                probe.Start();
+                probe.Stop();
+                return true;
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
         }
 
         private async Task ListenLoopAsync(HttpListener activeListener, CancellationToken cancellationToken)
@@ -112,11 +143,20 @@ namespace APIRelay
                     return;
                 }
 
+                var requestBody = await ReadRequestBodyAsync(request, cancellationToken);
                 var relayRoute = ResolveRelayRoute(request);
-                AppendInternalLog($"Request {requestId} route resolved. To={relayRoute.ToProtocol}; From={relayRoute.FromProtocol}");
+                if (relayRoute.IsManagedTool)
+                {
+                    if (!TryResolveManagedRoute(requestBody, relayRoute, out relayRoute, out var managedError))
+                    {
+                        TryClose(response, 400, BuildAuthErrorBody(managedError, "api_relay_invalid_managed_model"), "application/json; charset=utf-8");
+                        return;
+                    }
+                }
+                AppendInternalLog($"Request {requestId} route resolved. To={relayRoute.ToProtocol}; From={relayRoute.FromProtocol}; Managed={relayRoute.IsManagedTool}");
 
-                var endpoint = GetProviderEndpoint(relayRoute.ToProtocol);
-                if (!TryValidateClientApiKey(request, endpoint, out var authStatusCode, out var authErrorBody))
+                var endpoint = GetEndpointForRoute(relayRoute);
+                if (!relayRoute.IsManagedTool && !TryValidateClientApiKey(request, endpoint, out var authStatusCode, out var authErrorBody))
                 {
                     AppendInternalLog($"Request {requestId} rejected by API key validation. Status={authStatusCode}; Route={relayRoute.ToProtocol}");
                     TryClose(response, authStatusCode, authErrorBody, "application/json; charset=utf-8");
@@ -124,7 +164,6 @@ namespace APIRelay
                     return;
                 }
 
-                var requestBody = await ReadRequestBodyAsync(request, cancellationToken);
                 var requestSummary = BuildRequestSummary(request, requestBody);
                 AppendInternalLog($"Request {requestId} client request read. {BuildRequestDiagnostics(request, requestBody)}");
                 TryBeginInvoke(() => AppendLog(GetText(TextId.Txt67, requestSummary), true));

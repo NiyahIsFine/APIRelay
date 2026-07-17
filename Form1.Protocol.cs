@@ -122,12 +122,95 @@ namespace APIRelay
                 return BuildStreamingCreatedEvent(targetProtocol, state);
             }
 
-            if (root.TryGetProperty("delta", out var deltaElement) && deltaElement.ValueKind == JsonValueKind.String)
+            if (eventType == "response.output_text.delta"
+                && root.TryGetProperty("delta", out var textDeltaElement)
+                && textDeltaElement.ValueKind == JsonValueKind.String)
             {
-                return BuildStreamingTextDeltaEvent(targetProtocol, state, deltaElement.GetString() ?? string.Empty);
+                return BuildStreamingTextDeltaEvent(targetProtocol, state, textDeltaElement.GetString() ?? string.Empty);
+            }
+
+            if (eventType == "response.output_item.added" && root.TryGetProperty("item", out var itemElement))
+            {
+                return ConvertResponsesOutputItemAdded(root, itemElement, targetProtocol, state);
+            }
+
+            if (eventType == "response.function_call_arguments.delta")
+            {
+                return ConvertResponsesFunctionCallArgumentsDelta(root, targetProtocol, state);
+            }
+
+            if (eventType == "response.output_item.done" && root.TryGetProperty("item", out var doneItemElement))
+            {
+                return ConvertResponsesOutputItemDone(doneItemElement, targetProtocol, state);
+            }
+
+            if (eventType == "response.failed" && root.TryGetProperty("response", out var failedResponseElement))
+            {
+                state.Usage = TryReadUsage(failedResponseElement, out var failedUsage) ? MergeUsage(state.Usage, failedUsage) : state.Usage;
+                var errorMessage = ExtractProtocolError(failedResponseElement);
+                if (string.IsNullOrWhiteSpace(errorMessage))
+                {
+                    errorMessage = "Upstream provider request failed.";
+                }
+
+                state.ErrorMessage = errorMessage;
+                return string.Empty;
+            }
+
+            if (eventType == "response.incomplete" && root.TryGetProperty("response", out var incompleteResponseElement))
+            {
+                state.Usage = TryReadUsage(incompleteResponseElement, out var incompleteUsage) ? MergeUsage(state.Usage, incompleteUsage) : state.Usage;
+                var incompleteError = ExtractProtocolError(incompleteResponseElement);
+                if (!string.IsNullOrWhiteSpace(incompleteError))
+                {
+                    state.ErrorMessage = incompleteError;
+                }
+
+                return string.Empty;
             }
 
             state.Usage = TryReadUsage(root, out var usage) ? MergeUsage(state.Usage, usage) : state.Usage;
+            return string.Empty;
+        }
+
+        private static string ConvertResponsesOutputItemAdded(JsonElement root, JsonElement itemElement, ApiRouteKind targetProtocol, StreamingProtocolConversionState state)
+        {
+            var itemType = ReadString(itemElement, "type");
+            if (!itemType.Equals("function_call", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            var outputIndex = ReadInt(root, "output_index");
+            var id = ReadString(itemElement, "call_id", "id");
+            var name = ReadString(itemElement, "name");
+            var toolCall = state.GetOrCreateToolCall(outputIndex, id, name);
+            state.FinishReason = "tool_calls";
+            return BuildStreamingToolCallStartEvent(targetProtocol, state, toolCall);
+        }
+
+        private static string ConvertResponsesFunctionCallArgumentsDelta(JsonElement root, ApiRouteKind targetProtocol, StreamingProtocolConversionState state)
+        {
+            var outputIndex = ReadInt(root, "output_index");
+            var toolCall = state.GetOrCreateToolCall(outputIndex, string.Empty, string.Empty);
+            state.FinishReason = "tool_calls";
+            var argumentsDelta = ReadString(root, "delta");
+            if (!string.IsNullOrEmpty(argumentsDelta))
+            {
+                toolCall.HasArgumentsDelta = true;
+            }
+
+            return BuildStreamingToolCallArgumentsDeltaEvent(targetProtocol, state, toolCall, argumentsDelta);
+        }
+
+        private static string ConvertResponsesOutputItemDone(JsonElement itemElement, ApiRouteKind targetProtocol, StreamingProtocolConversionState state)
+        {
+            var itemType = ReadString(itemElement, "type");
+            if (!itemType.Equals("function_call", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
             return string.Empty;
         }
 
@@ -146,8 +229,79 @@ namespace APIRelay
 
             state.Usage = TryReadUsage(root, out var usage) ? MergeUsage(state.Usage, usage) : state.Usage;
             var created = state.Created ? string.Empty : BuildStreamingCreatedEvent(targetProtocol, state);
-            var delta = ExtractOpenAiChoiceContent(root);
-            return created + BuildStreamingTextDeltaEvent(targetProtocol, state, delta);
+
+            var deltaElement = default(JsonElement);
+            var hasDelta = false;
+            if (root.TryGetProperty("choices", out var choicesElement) && choicesElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var choice in choicesElement.EnumerateArray())
+                {
+                    if (choice.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    var finishReason = ReadString(choice, "finish_reason");
+                    if (!string.IsNullOrWhiteSpace(finishReason))
+                    {
+                        state.FinishReason = finishReason;
+                    }
+
+                    if (choice.TryGetProperty("delta", out var choiceDelta))
+                    {
+                        deltaElement = choiceDelta;
+                        hasDelta = true;
+                        break;
+                    }
+                }
+            }
+
+            var toolCallOutput = hasDelta ? ConvertOpenAiToolCallDeltas(deltaElement, targetProtocol, state) : string.Empty;
+            var text = ExtractOpenAiChoiceContent(root);
+            return created + toolCallOutput + BuildStreamingTextDeltaEvent(targetProtocol, state, text);
+        }
+
+        private static string ConvertOpenAiToolCallDeltas(JsonElement deltaElement, ApiRouteKind targetProtocol, StreamingProtocolConversionState state)
+        {
+            if (deltaElement.ValueKind != JsonValueKind.Object || !deltaElement.TryGetProperty("tool_calls", out var toolCallsElement) || toolCallsElement.ValueKind != JsonValueKind.Array)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (var toolCallDelta in toolCallsElement.EnumerateArray())
+            {
+                if (toolCallDelta.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var index = ReadInt(toolCallDelta, "index");
+                var id = ReadString(toolCallDelta, "id");
+                var name = string.Empty;
+                var arguments = string.Empty;
+                if (toolCallDelta.TryGetProperty("function", out var functionElement) && functionElement.ValueKind == JsonValueKind.Object)
+                {
+                    name = ReadString(functionElement, "name");
+                    arguments = ReadString(functionElement, "arguments");
+                }
+
+                var hasIdentity = !string.IsNullOrEmpty(id) || !string.IsNullOrEmpty(name);
+                var toolCall = state.GetOrCreateToolCall(index, id, name);
+                state.FinishReason = "tool_calls";
+                if (hasIdentity)
+                {
+                    builder.Append(BuildStreamingToolCallStartEvent(targetProtocol, state, toolCall));
+                }
+
+                if (!string.IsNullOrEmpty(arguments))
+                {
+                    toolCall.HasArgumentsDelta = true;
+                    builder.Append(BuildStreamingToolCallArgumentsDeltaEvent(targetProtocol, state, toolCall, arguments));
+                }
+            }
+
+            return builder.ToString();
         }
 
         private static string BuildStreamingCreatedEvent(ApiRouteKind protocol, StreamingProtocolConversionState state)
@@ -194,6 +348,7 @@ namespace APIRelay
             {
                 ApiRouteKind.ChatCompletions => "data: " + BuildOpenAiToolCallStreamChunk(state, toolCall, includeIdentity: true, argumentsDelta: string.Empty) + "\n\n",
                 ApiRouteKind.Responses => BuildResponsesToolCallStartEvent(state, toolCall),
+                ApiRouteKind.AnthropicMessages => BuildAnthropicToolCallStartEvent(state, toolCall),
                 _ => string.Empty
             };
         }
@@ -210,6 +365,7 @@ namespace APIRelay
             {
                 ApiRouteKind.ChatCompletions => "data: " + BuildOpenAiToolCallStreamChunk(state, toolCall, includeIdentity: false, argumentsDelta) + "\n\n",
                 ApiRouteKind.Responses => BuildResponsesToolCallArgumentsDeltaEvent(toolCall, argumentsDelta),
+                ApiRouteKind.AnthropicMessages => BuildAnthropicToolCallArgumentsDeltaEvent(state, toolCall, argumentsDelta),
                 _ => string.Empty
             };
         }
@@ -445,10 +601,44 @@ namespace APIRelay
         private static string BuildAnthropicSseEndEvents(StreamingProtocolConversionState state)
         {
             var builder = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(state.ErrorMessage))
+            {
+                AppendAnthropicSseEvent(builder, "content_block_delta", new { type = "content_block_delta", index = 0, delta = new { type = "text_delta", text = state.ErrorMessage } });
+            }
+
             AppendAnthropicSseEvent(builder, "content_block_stop", new { type = "content_block_stop", index = 0 });
-            AppendAnthropicSseEvent(builder, "message_delta", new { type = "message_delta", delta = new { stop_reason = "end_turn", stop_sequence = (string?)null }, usage = new { output_tokens = state.Usage.CompletionTokens } });
+            foreach (var toolCall in state.ToolCalls)
+            {
+                var blockIndex = toolCall.OpenAiIndex + 1;
+                AppendAnthropicSseEvent(builder, "content_block_stop", new { type = "content_block_stop", index = blockIndex });
+            }
+
+            var stopReason = !string.IsNullOrWhiteSpace(state.ErrorMessage) ? "end_turn" : (state.ToolCalls.Any() ? "tool_use" : "end_turn");
+            AppendAnthropicSseEvent(builder, "message_delta", new { type = "message_delta", delta = new { stop_reason = stopReason, stop_sequence = (string?)null }, usage = new { output_tokens = state.Usage.CompletionTokens } });
             AppendAnthropicSseEvent(builder, "message_stop", new { type = "message_stop" });
             return builder.ToString();
+        }
+
+        private static string BuildAnthropicToolCallStartEvent(StreamingProtocolConversionState state, ToolCallStreamState toolCall)
+        {
+            var blockIndex = toolCall.OpenAiIndex + 1;
+            return BuildAnthropicSseEvent("content_block_start", new
+            {
+                type = "content_block_start",
+                index = blockIndex,
+                content_block = new { type = "tool_use", id = toolCall.Id, name = toolCall.Name, input = new { } }
+            });
+        }
+
+        private static string BuildAnthropicToolCallArgumentsDeltaEvent(StreamingProtocolConversionState state, ToolCallStreamState toolCall, string argumentsDelta)
+        {
+            var blockIndex = toolCall.OpenAiIndex + 1;
+            return BuildAnthropicSseEvent("content_block_delta", new
+            {
+                type = "content_block_delta",
+                index = blockIndex,
+                delta = new { type = "input_json_delta", partial_json = argumentsDelta }
+            });
         }
 
         private static async Task WriteResponseBodyAsync(HttpListenerResponse localResponse, byte[] responseBytes, CancellationToken cancellationToken)
@@ -460,7 +650,7 @@ namespace APIRelay
         private HttpRequestMessage BuildProviderRequest(HttpListenerRequest request, byte[] requestBody, RelayRoute relayRoute, out byte[] providerRequestBody)
         {
             var config = activeConfig ?? throw new InvalidOperationException(GetText(TextId.Txt95));
-            var endpoint = GetProviderEndpoint(relayRoute.ToProtocol);
+            var endpoint = GetEndpointForRoute(relayRoute);
             var targetUri = BuildTargetUri(request, endpoint);
             var providerRequest = new HttpRequestMessage(new HttpMethod(request.HttpMethod), targetUri);
             providerRequestBody = Array.Empty<byte>();
@@ -479,11 +669,14 @@ namespace APIRelay
                 }
             }
 
-            ApplyProviderAuthentication(providerRequest, endpoint, ExtractClientApiKey(request));
+            ApplyProviderAuthentication(providerRequest, endpoint, relayRoute.ManagedRoute?.ApiKey ?? ExtractClientApiKey(request));
 
             if (requestBody.Length > 0)
             {
-                providerRequestBody = TransformRequestBody(requestBody, relayRoute.FromProtocol, relayRoute.ToProtocol);
+                var routedRequestBody = relayRoute.ManagedRoute == null
+                    ? requestBody
+                    : RewriteRequestModel(requestBody, relayRoute.ManagedRoute.ModelId);
+                providerRequestBody = TransformRequestBody(routedRequestBody, relayRoute.FromProtocol, relayRoute.ToProtocol);
 
                 if (relayRoute.ToProtocol == ApiRouteKind.AnthropicMessages
                     && (endpoint.ForceCache || (relayRoute.FromProtocol != relayRoute.ToProtocol && endpoint.CacheOnConversion)))
@@ -590,6 +783,24 @@ namespace APIRelay
             return endpoint;
         }
 
+        private ProviderEndpointConfig GetEndpointForRoute(RelayRoute relayRoute)
+        {
+            if (relayRoute.ManagedRoute is not ManagedRuntimeRoute managedRoute)
+            {
+                return GetProviderEndpoint(relayRoute.ToProtocol);
+            }
+
+            return new ProviderEndpointConfig
+            {
+                RouteKind = managedRoute.Protocol,
+                ProviderType = managedRoute.Protocol == ApiRouteKind.AnthropicMessages ? ProviderType.Anthropic : ProviderType.OpenAICompatible,
+                ProviderUrl = managedRoute.ProviderUri.ToString(),
+                AnthropicVersion = managedRoute.AnthropicVersion,
+                ForceCache = managedRoute.ForceCache,
+                CacheOnConversion = managedRoute.CacheOnConversion
+            };
+        }
+
         private string ValidateProviderUrl(ApiRouteKind routeKind, string providerUrl)
         {
             var trimmedProviderUrl = providerUrl.Trim();
@@ -621,7 +832,13 @@ namespace APIRelay
 
         private static RelayRoute ResolveRelayRoute(HttpListenerRequest request)
         {
-            var segments = (request.Url?.AbsolutePath ?? "/")
+            var absolutePath = request.Url?.AbsolutePath ?? "/";
+            if (TryResolveManagedClientProtocol(absolutePath, out var managedClientProtocol))
+            {
+                return new RelayRoute(managedClientProtocol, managedClientProtocol, true);
+            }
+
+            var segments = absolutePath
                 .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             if (segments.Length == 0 || !TryParseApiRouteKind(segments[0], out var toProtocol))
@@ -636,6 +853,51 @@ namespace APIRelay
             }
 
             return new RelayRoute(toProtocol, fromProtocol);
+        }
+
+        private static bool TryResolveManagedClientProtocol(string absolutePath, out ApiRouteKind protocol)
+        {
+            var segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length > 0 && segments[0].Equals("claude", StringComparison.OrdinalIgnoreCase))
+            {
+                protocol = ApiRouteKind.AnthropicMessages;
+                return true;
+            }
+            if (segments.Length > 0 && segments[0].Equals("codex", StringComparison.OrdinalIgnoreCase))
+            {
+                protocol = ApiRouteKind.Responses;
+                return true;
+            }
+            protocol = default;
+            return false;
+        }
+
+        private static byte[] RewriteRequestModel(byte[] requestBody, string modelId)
+        {
+            using var document = JsonDocument.Parse(requestBody);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException("Managed tool request body must be a JSON object.");
+            }
+
+            using var output = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(output))
+            {
+                writer.WriteStartObject();
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (property.NameEquals("model"))
+                    {
+                        writer.WriteString("model", modelId);
+                    }
+                    else
+                    {
+                        property.WriteTo(writer);
+                    }
+                }
+                writer.WriteEndObject();
+            }
+            return output.ToArray();
         }
 
         private static bool TryParseApiRouteKind(string value, out ApiRouteKind routeKind)
@@ -1061,10 +1323,7 @@ namespace APIRelay
 
             if (request.Messages.ValueKind == JsonValueKind.Array)
             {
-                foreach (var message in request.Messages.EnumerateArray())
-                {
-                    message.WriteTo(writer);
-                }
+                WriteChatCompletionsMessagesFromAnthropic(writer, request.Messages);
             }
             else if (request.Input is { } inputElement)
             {
@@ -1077,6 +1336,85 @@ namespace APIRelay
 
             writer.WriteEndArray();
             WriteOpenAiCompatibleTools(writer, request.Tools);
+            writer.WriteEndObject();
+        }
+
+        private static void WriteChatCompletionsMessagesFromAnthropic(Utf8JsonWriter writer, JsonElement messagesElement)
+        {
+            foreach (var message in messagesElement.EnumerateArray())
+            {
+                if (message.ValueKind != JsonValueKind.Object
+                    || !message.TryGetProperty("content", out var contentElement)
+                    || contentElement.ValueKind != JsonValueKind.Array)
+                {
+                    message.WriteTo(writer);
+                    continue;
+                }
+
+                var role = ReadString(message, "role");
+                var toolUseParts = contentElement.EnumerateArray()
+                    .Where(part => ReadString(part, "type").Equals("tool_use", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var toolResultParts = contentElement.EnumerateArray()
+                    .Where(part => ReadString(part, "type").Equals("tool_result", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (role.Equals("assistant", StringComparison.OrdinalIgnoreCase) && toolUseParts.Count > 0)
+                {
+                    WriteChatCompletionsAssistantToolCallMessage(writer, contentElement, toolUseParts);
+                    continue;
+                }
+
+                if (role.Equals("user", StringComparison.OrdinalIgnoreCase) && toolResultParts.Count > 0)
+                {
+                    foreach (var toolResult in toolResultParts)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("role", "tool");
+                        writer.WriteString("tool_call_id", ReadString(toolResult, "tool_use_id"));
+                        writer.WriteString("content", ExtractElementText(toolResult));
+                        writer.WriteEndObject();
+                    }
+
+                    var text = string.Concat(contentElement.EnumerateArray()
+                        .Where(part => ReadString(part, "type").Equals("text", StringComparison.OrdinalIgnoreCase))
+                        .Select(part => ReadString(part, "text")));
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("role", "user");
+                        writer.WriteString("content", text);
+                        writer.WriteEndObject();
+                    }
+                    continue;
+                }
+
+                message.WriteTo(writer);
+            }
+        }
+
+        private static void WriteChatCompletionsAssistantToolCallMessage(Utf8JsonWriter writer, JsonElement contentElement, List<JsonElement> toolUseParts)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("role", "assistant");
+            writer.WriteString("content", string.Concat(contentElement.EnumerateArray()
+                .Where(part => ReadString(part, "type").Equals("text", StringComparison.OrdinalIgnoreCase))
+                .Select(part => ReadString(part, "text"))));
+            writer.WritePropertyName("tool_calls");
+            writer.WriteStartArray();
+            foreach (var toolUse in toolUseParts)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", ReadString(toolUse, "id"));
+                writer.WriteString("type", "function");
+                writer.WritePropertyName("function");
+                writer.WriteStartObject();
+                writer.WriteString("name", ReadString(toolUse, "name"));
+                writer.WriteString("arguments", toolUse.TryGetProperty("input", out var inputElement) ? inputElement.GetRawText() : "{}");
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
             writer.WriteEndObject();
         }
 
@@ -1401,8 +1739,7 @@ namespace APIRelay
             WriteCommonRequestProperties(writer, request, "max_output_tokens");
             if (request.System is { } systemElement && systemElement.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null)
             {
-                writer.WritePropertyName("instructions");
-                systemElement.WriteTo(writer);
+                writer.WriteString("instructions", ExtractElementText(systemElement));
             }
 
             writer.WritePropertyName("input");
@@ -1410,22 +1747,157 @@ namespace APIRelay
             {
                 inputElement.WriteTo(writer);
             }
-            else if (request.Messages.ValueKind != JsonValueKind.Undefined)
+            else if (request.Messages.ValueKind == JsonValueKind.Array)
             {
-                request.Messages.WriteTo(writer);
+                WriteResponsesInputFromAnthropicMessages(writer, request.Messages);
             }
             else
             {
                 writer.WriteStringValue(string.Empty);
             }
 
-            if (request.Tools is { } toolsElement)
-            {
-                writer.WritePropertyName("tools");
-                toolsElement.WriteTo(writer);
-            }
+            WriteResponsesProtocolTools(writer, request.Tools);
 
             writer.WriteEndObject();
+        }
+
+        private static void WriteResponsesInputFromAnthropicMessages(Utf8JsonWriter writer, JsonElement messagesElement)
+        {
+            writer.WriteStartArray();
+            foreach (var message in messagesElement.EnumerateArray())
+            {
+                if (message.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var role = ReadString(message, "role");
+                if (!message.TryGetProperty("content", out var contentElement) || contentElement.ValueKind != JsonValueKind.Array)
+                {
+                    WriteResponsesMessage(writer, role, contentElement);
+                    continue;
+                }
+
+                var textParts = contentElement.EnumerateArray()
+                    .Where(part => ReadString(part, "type").Equals("text", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (textParts.Count > 0)
+                {
+                    WriteResponsesMessage(writer, role, textParts);
+                }
+
+                foreach (var part in contentElement.EnumerateArray())
+                {
+                    var type = ReadString(part, "type");
+                    if (type.Equals("tool_use", StringComparison.OrdinalIgnoreCase))
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("type", "function_call");
+                        writer.WriteString("call_id", ReadString(part, "id"));
+                        writer.WriteString("name", ReadString(part, "name"));
+                        writer.WriteString("arguments", part.TryGetProperty("input", out var input) ? input.GetRawText() : "{}");
+                        writer.WriteEndObject();
+                    }
+                    else if (type.Equals("tool_result", StringComparison.OrdinalIgnoreCase))
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("type", "function_call_output");
+                        writer.WriteString("call_id", ReadString(part, "tool_use_id"));
+                        writer.WriteString("output", ExtractElementText(part));
+                        writer.WriteEndObject();
+                    }
+                }
+            }
+
+            writer.WriteEndArray();
+        }
+
+        private static void WriteResponsesMessage(Utf8JsonWriter writer, string role, JsonElement contentElement)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("role", role);
+            writer.WritePropertyName("content");
+            writer.WriteStartArray();
+            WriteResponsesTextPart(writer, role, ExtractElementText(contentElement));
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        private static void WriteResponsesMessage(Utf8JsonWriter writer, string role, List<JsonElement> textParts)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("role", role);
+            writer.WritePropertyName("content");
+            writer.WriteStartArray();
+            foreach (var part in textParts)
+            {
+                WriteResponsesTextPart(writer, role, ExtractElementText(part));
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        private static void WriteResponsesTextPart(Utf8JsonWriter writer, string role, string text)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("type", role.Equals("assistant", StringComparison.OrdinalIgnoreCase) ? "output_text" : "input_text");
+            writer.WriteString("text", text);
+            writer.WriteEndObject();
+        }
+
+        private static void WriteResponsesProtocolTools(Utf8JsonWriter writer, JsonElement? tools)
+        {
+            if (tools is not { } toolsElement)
+            {
+                return;
+            }
+
+            writer.WritePropertyName("tools");
+            if (toolsElement.ValueKind != JsonValueKind.Array)
+            {
+                toolsElement.WriteTo(writer);
+                return;
+            }
+
+            writer.WriteStartArray();
+            foreach (var tool in toolsElement.EnumerateArray())
+            {
+                if (tool.ValueKind == JsonValueKind.Object && tool.TryGetProperty("input_schema", out var inputSchemaElement))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "function");
+                    CopyOptionalString(tool, writer, "name");
+                    CopyOptionalString(tool, writer, "description");
+                    writer.WritePropertyName("parameters");
+                    inputSchemaElement.WriteTo(writer);
+                    writer.WriteEndObject();
+                    continue;
+                }
+
+                if (tool.ValueKind == JsonValueKind.Object
+                    && string.Equals(ReadString(tool, "type"), "function", StringComparison.OrdinalIgnoreCase)
+                    && tool.TryGetProperty("function", out var functionElement)
+                    && functionElement.ValueKind == JsonValueKind.Object)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "function");
+                    CopyOptionalString(functionElement, writer, "name");
+                    CopyOptionalString(functionElement, writer, "description");
+                    if (functionElement.TryGetProperty("parameters", out var parametersElement))
+                    {
+                        writer.WritePropertyName("parameters");
+                        parametersElement.WriteTo(writer);
+                    }
+
+                    writer.WriteEndObject();
+                    continue;
+                }
+
+                tool.WriteTo(writer);
+            }
+
+            writer.WriteEndArray();
         }
 
         private static void WriteCommonRequestProperties(Utf8JsonWriter writer, ProtocolRequest request, string maxTokensName, int defaultMaxTokens = 0)
@@ -1877,6 +2349,18 @@ namespace APIRelay
             {
                 using var document = JsonDocument.Parse(responseBytes);
                 var root = document.RootElement;
+                var error = ExtractProtocolError(root);
+                if (!string.IsNullOrEmpty(error))
+                {
+                    return new ProtocolResponse(
+                        ReadString(root, "id"),
+                        ReadModelOrRequestModel(root, requestBody),
+                        error,
+                        "error",
+                        TryReadUsage(root, out var errorUsage) ? errorUsage : UsageInfo.Empty,
+                        error);
+                }
+
                 return new ProtocolResponse(
                     ReadString(root, "id"),
                     ReadModelOrRequestModel(root, requestBody),
@@ -1896,6 +2380,18 @@ namespace APIRelay
             {
                 using var document = JsonDocument.Parse(responseBytes);
                 var root = document.RootElement;
+                var error = ExtractProtocolError(root);
+                if (!string.IsNullOrEmpty(error))
+                {
+                    return new ProtocolResponse(
+                        ReadString(root, "id"),
+                        ReadModelOrRequestModel(root, requestBody),
+                        error,
+                        "error",
+                        TryReadUsage(root, out var errorUsage) ? errorUsage : UsageInfo.Empty,
+                        error);
+                }
+
                 return new ProtocolResponse(
                     ReadString(root, "id"),
                     ReadModelOrRequestModel(root, requestBody),
@@ -1915,6 +2411,18 @@ namespace APIRelay
             {
                 using var document = JsonDocument.Parse(responseBytes);
                 var root = document.RootElement;
+                var error = ExtractProtocolError(root);
+                if (!string.IsNullOrEmpty(error))
+                {
+                    return new ProtocolResponse(
+                        ReadString(root, "id"),
+                        ReadModelOrRequestModel(root, requestBody),
+                        error,
+                        "error",
+                        TryReadUsage(root, out var errorUsage) ? errorUsage : UsageInfo.Empty,
+                        error);
+                }
+
                 return new ProtocolResponse(
                     ReadString(root, "id"),
                     ReadModelOrRequestModel(root, requestBody),
@@ -2564,6 +3072,39 @@ namespace APIRelay
             }
 
             return string.Join(string.Empty, parts);
+        }
+
+        private static string ExtractProtocolError(JsonElement root)
+        {
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            var errorElement = root.TryGetProperty("error", out var directError) ? directError : default;
+            if (errorElement.ValueKind == JsonValueKind.Undefined || errorElement.ValueKind == JsonValueKind.Null)
+            {
+                if (root.TryGetProperty("response", out var nestedResponse) && nestedResponse.ValueKind == JsonValueKind.Object)
+                {
+                    errorElement = nestedResponse.TryGetProperty("error", out var nestedError) ? nestedError : default;
+                }
+            }
+
+            if (errorElement.ValueKind == JsonValueKind.String)
+            {
+                return errorElement.GetString() ?? string.Empty;
+            }
+
+            if (errorElement.ValueKind == JsonValueKind.Object)
+            {
+                var message = ReadString(errorElement, "message");
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    return message;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static string ConvertResponsesStatusToOpenAiFinishReason(string status)

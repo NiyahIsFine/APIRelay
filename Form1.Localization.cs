@@ -85,6 +85,7 @@ namespace APIRelay
             costColumn.HeaderText = GetText(TextId.Txt22);
             durationColumn.HeaderText = GetText(TextId.Txt29);
             statusColumn.HeaderText = GetText(TextId.Txt17);
+            ApplyManagedToolLanguage();
 
             SetRunningState(listener != null);
             UpdateStatsScopeButtonText();

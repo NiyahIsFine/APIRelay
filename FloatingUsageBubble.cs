@@ -30,11 +30,11 @@ namespace APIRelay
         public FloatingUsageBubble(AppLanguage language = AppLanguage.English)
         {
             AutoScaleMode = AutoScaleMode.Font;
-            BackColor = Color.FromArgb(26, 29, 36);
+            BackColor = UiTheme.Window;
             ClientSize = new Size(232, 124);
-            Font = new Font("Microsoft YaHei UI", 9F);
+            Font = new Font(UiTheme.FontFamily, 9F);
             FormBorderStyle = FormBorderStyle.None;
-            Opacity = 0.86;
+            Opacity = 0.92;
             Padding = new Padding(14, 10, 14, 12);
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
@@ -58,19 +58,19 @@ namespace APIRelay
             titleLabel.AutoSize = true;
             titleLabel.Dock = DockStyle.Fill;
             titleLabel.Font = new Font(Font.FontFamily, 10F, FontStyle.Bold);
-            titleLabel.ForeColor = Color.White;
+            titleLabel.ForeColor = UiTheme.Text;
             titleLabel.TextAlign = ContentAlignment.MiddleLeft;
             layout.Controls.Add(titleLabel, 0, 0);
             layout.SetColumnSpan(titleLabel, 2);
 
-            AddStatRow(layout, 1, inputLabel, inputValueLabel, Color.FromArgb(126, 174, 255));
-            AddStatRow(layout, 2, outputLabel, outputValueLabel, Color.FromArgb(116, 222, 162));
-            AddStatRow(layout, 3, costLabel, costValueLabel, Color.FromArgb(255, 160, 207));
+            AddStatRow(layout, 1, inputLabel, inputValueLabel, UiTheme.SeriesInput);
+            AddStatRow(layout, 2, outputLabel, outputValueLabel, UiTheme.SeriesOutput);
+            AddStatRow(layout, 3, costLabel, costValueLabel, UiTheme.SeriesCost);
 
             toastLabel.AutoSize = true;
-            toastLabel.BackColor = Color.FromArgb(255, 226, 243);
+            toastLabel.BackColor = Color.FromArgb(60, UiTheme.SeriesCost);
             toastLabel.Font = new Font(Font.FontFamily, 10F, FontStyle.Bold);
-            toastLabel.ForeColor = Color.FromArgb(190, 34, 111);
+            toastLabel.ForeColor = UiTheme.SeriesCost;
             toastLabel.Padding = new Padding(10, 4, 10, 4);
             toastLabel.Visible = false;
 
@@ -121,6 +121,7 @@ namespace APIRelay
                 PlaceNearBottomRight();
             }
 
+            EnsureOnScreen();
             KeepAboveNormalWindows();
         }
 
@@ -151,8 +152,8 @@ namespace APIRelay
         {
             base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var glowPen = new Pen(Color.FromArgb(36, 255, 255, 255), 4F);
-            using var borderPen = new Pen(Color.FromArgb(86, 255, 255, 255));
+            using var glowPen = new Pen(Color.FromArgb(20, UiTheme.Accent), 5F);
+            using var borderPen = new Pen(Color.FromArgb(90, UiTheme.Accent));
             e.Graphics.DrawRoundedRectangle(glowPen, new Rectangle(2, 2, Width - 5, Height - 5), BubbleCornerRadius);
             e.Graphics.DrawRoundedRectangle(borderPen, new Rectangle(0, 0, Width - 1, Height - 1), BubbleCornerRadius);
         }
@@ -212,6 +213,28 @@ namespace APIRelay
             Location = new Point(area.Right - Width - 24, area.Bottom - Height - 24);
         }
 
+        public void EnsureOnScreen()
+        {
+            var bounds = new Rectangle(Location, Size);
+            var bestArea = Screen.PrimaryScreen?.WorkingArea ?? SystemInformation.WorkingArea;
+            var bestOverlap = long.MinValue;
+
+            foreach (var screen in Screen.AllScreens)
+            {
+                var overlap = Rectangle.Intersect(bounds, screen.WorkingArea);
+                var area = (long)overlap.Width * overlap.Height;
+                if (area > bestOverlap)
+                {
+                    bestOverlap = area;
+                    bestArea = screen.WorkingArea;
+                }
+            }
+
+            var x = Math.Max(bestArea.Left, Math.Min(Location.X, bestArea.Right - Width));
+            var y = Math.Max(bestArea.Top, Math.Min(Location.Y, bestArea.Bottom - Height));
+            Location = new Point(x, y);
+        }
+
         public void SetStartupLocation(Point location)
         {
             hasStartupLocation = true;
@@ -222,12 +245,12 @@ namespace APIRelay
         {
             label.AutoSize = true;
             label.Dock = DockStyle.Fill;
-            label.ForeColor = Color.FromArgb(190, 196, 210);
+            label.ForeColor = UiTheme.TextSecondary;
             label.TextAlign = ContentAlignment.MiddleLeft;
 
             valueLabel.AutoSize = true;
             valueLabel.Dock = DockStyle.Fill;
-            valueLabel.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
+            valueLabel.Font = new Font(UiTheme.FontFamily, 9.5F, FontStyle.Bold);
             valueLabel.ForeColor = valueColor;
             valueLabel.TextAlign = ContentAlignment.MiddleRight;
 

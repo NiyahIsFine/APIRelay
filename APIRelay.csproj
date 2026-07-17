@@ -13,4 +13,12 @@
     <EmbeddedResource Include="ico\app.ico" LogicalName="APIRelay.app.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="APIRelay.Tests\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+  </ItemGroup>
+
 </Project>

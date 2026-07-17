@@ -28,17 +28,27 @@ namespace APIRelay
             "APIRelay",
             "model-costs.json");
 
+        private readonly string secretsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "APIRelay",
+            "secrets.json");
+
         private readonly string appDataRoot;
         private readonly string logsDirectory;
         private readonly string recordsDirectory;
         private readonly string internalLogPath;
         private readonly string protocolLogPath;
+        private readonly string managedConfigDirectory;
         private readonly object internalLogLock = new();
         private readonly object protocolLogLock = new();
         private readonly object recordsLock = new();
         private readonly List<RequestRecord> visibleRecords = new();
         private readonly List<ModelCostConfig> modelCosts = new();
+        private readonly List<RegisteredModelConfig> registeredModels = new();
         private readonly Dictionary<ApiRouteKind, ProviderEndpointConfig> providerConfigs = CreateDefaultProviderConfigs();
+        private readonly Dictionary<ApiRouteKind, string> providerApiKeys = new();
+        private IReadOnlyDictionary<string, ManagedRuntimeRoute> managedRuntimeRoutes = new Dictionary<string, ManagedRuntimeRoute>(StringComparer.Ordinal);
+        private ToolConfigurationSettings toolConfiguration = new();
         private const string AnthropicMessagesRelayPath = "/anthropic/v1/messages";
         private const int DefaultAnthropicMaxTokens = 8192;
         private const long StreamingProgressLogIntervalMs = 5000;
@@ -48,6 +58,7 @@ namespace APIRelay
         private bool allowExit;
         private bool usageBubbleVisible = true;
         private bool protocolTraceVisible;
+        private bool relayShouldRun;
         private int openLogRightClickCount;
         private bool autoStartRelayQueued;
         private Point? savedUsageBubbleLocation;
@@ -76,16 +87,22 @@ namespace APIRelay
             recordsDirectory = Path.Combine(appDataRoot, "Records");
             internalLogPath = Path.Combine(logsDirectory, "internal.txt");
             protocolLogPath = Path.Combine(logsDirectory, "protocol-trace.txt");
+            managedConfigDirectory = Path.Combine(appDataRoot, "ManagedConfig");
 
             InitializeComponent();
+            InitializeManagedToolControls();
             InitializeProtocolTraceControls();
+            ApplyTheme();
             ApplyApplicationIcon();
             requestGrid.ShowCellToolTips = true;
             InitializeLanguageSelector();
             InitializeRouteHelper();
             InitializeStorage();
             AppendInternalLog("Application initialized.");
+            RecoverManagedToolConfigurations();
+            LoadProviderApiKeys();
             LoadSettings();
+            RefreshManagedToolControls();
             ApplyLanguage();
             LoadRecordDates(DateTime.Today);
             LoadRecordsForSelectedDate();
@@ -112,7 +129,7 @@ namespace APIRelay
 
             CaptureUsageBubbleLocation();
             AppendInternalLog($"Form closing. Reason={e.CloseReason}; AllowExit={allowExit}.");
-            StopRelay();
+            StopRelay(clearRunIntent: false);
             SaveSettings();
             trayIcon?.Dispose();
             usageBubble?.Dispose();
@@ -317,18 +334,10 @@ namespace APIRelay
 
         private void ProviderSettingsButton_Click(object sender, EventArgs e)
         {
-            if (listener != null)
-            {
-                MessageBox.Show(
-                    GetText(TextId.Txt49),
-                    GetText(TextId.Txt50),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
+            var readOnly = listener != null;
 
-            using var dialog = new ProviderSettingsForm(providerConfigs.Values.OrderBy(config => config.RouteKind), currentLanguage);
-            if (dialog.ShowDialog(this) != DialogResult.OK)
+            using var dialog = new ProviderSettingsForm(providerConfigs.Values.OrderBy(config => config.RouteKind), currentLanguage, readOnly);
+            if (dialog.ShowDialog(this) != DialogResult.OK || readOnly)
             {
                 return;
             }

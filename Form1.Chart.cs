@@ -47,7 +47,7 @@ namespace APIRelay
         private void DrawDailyChart(Graphics graphics, Rectangle bounds)
         {
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.Clear(Color.White);
+            graphics.Clear(UiTheme.Panel);
 
             if (bounds.Width <= 40 || bounds.Height <= 40)
             {
@@ -65,9 +65,9 @@ namespace APIRelay
                 return;
             }
 
-            using var axisPen = new Pen(Color.FromArgb(180, 180, 180));
-            using var gridPen = new Pen(Color.FromArgb(232, 232, 232));
-            using var textBrush = new SolidBrush(Color.FromArgb(80, 80, 80));
+            using var axisPen = new Pen(UiTheme.Border);
+            using var gridPen = new Pen(UiTheme.BorderSoft);
+            using var textBrush = new SolidBrush(UiTheme.TextSecondary);
             using var legendFont = new Font(Font.FontFamily, 8.5F);
 
             for (var index = 0; index <= 4; index++)
@@ -87,14 +87,14 @@ namespace APIRelay
             {
                 var emptyText = GetText(TextId.Txt72);
                 var emptySize = TextRenderer.MeasureText(emptyText, Font);
-                TextRenderer.DrawText(graphics, emptyText, Font, new Point(chartBounds.Left + (chartBounds.Width - emptySize.Width) / 2, chartBounds.Top + (chartBounds.Height - emptySize.Height) / 2), Color.Gray);
+                TextRenderer.DrawText(graphics, emptyText, Font, new Point(chartBounds.Left + (chartBounds.Width - emptySize.Width) / 2, chartBounds.Top + (chartBounds.Height - emptySize.Height) / 2), UiTheme.TextMuted);
                 return;
             }
 
-            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.InputTokens).ToArray(), tokenScaleMax, Color.RoyalBlue);
-            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.OutputTokens).ToArray(), tokenScaleMax, Color.SeaGreen);
-            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.CachedTokens).ToArray(), tokenScaleMax, Color.DarkOrange);
-            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.Cost).ToArray(), (double)costScaleMax, Color.MediumVioletRed);
+            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.InputTokens).ToArray(), tokenScaleMax, UiTheme.SeriesInput);
+            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.OutputTokens).ToArray(), tokenScaleMax, UiTheme.SeriesOutput);
+            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.CachedTokens).ToArray(), tokenScaleMax, UiTheme.SeriesCache);
+            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.Cost).ToArray(), (double)costScaleMax, UiTheme.SeriesCost);
             DrawHoverDetails(graphics, bounds, chartBounds, buckets, legendFont);
         }
 
@@ -121,10 +121,10 @@ namespace APIRelay
         {
             var items = new[]
             {
-                (GetText(TextId.Txt19), Color.RoyalBlue),
-                (GetText(TextId.Txt20), Color.SeaGreen),
-                (GetText(TextId.Txt21), Color.DarkOrange),
-                (GetText(TextId.Txt22), Color.MediumVioletRed)
+                (GetText(TextId.Txt19), UiTheme.SeriesInput),
+                (GetText(TextId.Txt20), UiTheme.SeriesOutput),
+                (GetText(TextId.Txt21), UiTheme.SeriesCache),
+                (GetText(TextId.Txt22), UiTheme.SeriesCost)
             };
 
             var x = bounds.Left + 78;
@@ -176,12 +176,12 @@ namespace APIRelay
             var start = TimeSpan.FromMinutes(bucketIndex * 30);
             var end = start.Add(TimeSpan.FromMinutes(30));
 
-            using var hoverPen = new Pen(Color.FromArgb(90, 90, 90)) { DashStyle = DashStyle.Dash };
+            using var hoverPen = new Pen(UiTheme.TextMuted) { DashStyle = DashStyle.Dash };
             graphics.DrawLine(hoverPen, x, chartBounds.Top, x, chartBounds.Bottom);
             graphics.DrawLine(hoverPen, x, chartBounds.Bottom, x, chartBounds.Bottom + 18);
 
             var timeText = $"{start:hh\\:mm}-{end:hh\\:mm}";
-            TextRenderer.DrawText(graphics, timeText, font, new Point(x - 28, chartBounds.Bottom + 20), Color.FromArgb(60, 60, 60));
+            TextRenderer.DrawText(graphics, timeText, font, new Point(x - 28, chartBounds.Bottom + 20), UiTheme.TextSecondary);
 
             var lines = new[]
             {
@@ -199,8 +199,8 @@ namespace APIRelay
             var tooltipY = Math.Min(Math.Max(mouse.Y + 10, bounds.Top + 4), bounds.Bottom - tooltipHeight - 4);
             var tooltipBounds = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
 
-            using var backgroundBrush = new SolidBrush(Color.FromArgb(245, 255, 255, 255));
-            using var borderPen = new Pen(Color.FromArgb(160, 160, 160));
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(238, UiTheme.Surface));
+            using var borderPen = new Pen(UiTheme.Border);
             graphics.FillRectangle(backgroundBrush, tooltipBounds);
             graphics.DrawRectangle(borderPen, tooltipBounds);
 
@@ -208,11 +208,11 @@ namespace APIRelay
             {
                 var color = index switch
                 {
-                    1 => Color.RoyalBlue,
-                    2 => Color.SeaGreen,
-                    3 => Color.DarkOrange,
-                    4 => Color.MediumVioletRed,
-                    _ => Color.FromArgb(50, 50, 50)
+                    1 => UiTheme.SeriesInput,
+                    2 => UiTheme.SeriesOutput,
+                    3 => UiTheme.SeriesCache,
+                    4 => UiTheme.SeriesCost,
+                    _ => UiTheme.TextSecondary
                 };
                 TextRenderer.DrawText(graphics, lines[index], font, new Point(tooltipBounds.Left + 8, tooltipBounds.Top + 6 + index * lineHeight), color);
             }
@@ -287,7 +287,18 @@ namespace APIRelay
                 chartBounds.Left + (float)(index * chartBounds.Width / 47.0),
                 chartBounds.Bottom - (float)(Math.Min(value, scaleMax) / scaleMax * chartBounds.Height))).ToArray();
 
-            using var pen = new Pen(color, 2F);
+            // Faint area fill beneath each line for depth.
+            if (points.Length >= 2)
+            {
+                using var areaPath = new GraphicsPath();
+                areaPath.AddLines(points);
+                areaPath.AddLine(points[^1].X, chartBounds.Bottom, points[0].X, chartBounds.Bottom);
+                areaPath.CloseFigure();
+                using var areaBrush = new SolidBrush(Color.FromArgb(28, color));
+                graphics.FillPath(areaBrush, areaPath);
+            }
+
+            using var pen = new Pen(color, 2.25F) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             graphics.DrawLines(pen, points);
         }
     }

@@ -94,7 +94,11 @@ namespace APIRelay
 
         private sealed record RelayConfig(Uri LocalUri);
 
-        private sealed record RelayRoute(ApiRouteKind ToProtocol, ApiRouteKind FromProtocol);
+        private sealed record RelayRoute(
+            ApiRouteKind ToProtocol,
+            ApiRouteKind FromProtocol,
+            bool IsManagedTool = false,
+            ManagedRuntimeRoute? ManagedRoute = null);
 
         private sealed record ClientResponseBody(byte[] Body, string? ContentType);
 
@@ -111,7 +115,7 @@ namespace APIRelay
             JsonElement? Temperature,
             JsonElement? TopP);
 
-        private sealed record ProtocolResponse(string Id, string Model, string Content, string FinishReason, UsageInfo Usage);
+        private sealed record ProtocolResponse(string Id, string Model, string Content, string FinishReason, UsageInfo Usage, string? Error = null);
 
     private sealed record ModelListItem(string Id, string DisplayName, long? Created);
 
@@ -129,6 +133,7 @@ namespace APIRelay
             public bool Created { get; set; }
             public bool OpenAiRoleSent { get; set; }
             public string FinishReason { get; set; } = "stop";
+            public string? ErrorMessage { get; set; }
             public UsageInfo Usage { get; set; } = UsageInfo.Empty;
             public string ResponsesTextItemId { get; } = "msg_" + Guid.NewGuid().ToString("N");
             public StringBuilder ResponsesText { get; } = new();
@@ -393,6 +398,12 @@ namespace APIRelay
             Anthropic
         }
 
+        private enum ManagedToolKind
+        {
+            Claude,
+            Codex
+        }
+
         private enum ProtocolTraceDirection
         {
             ClientToTool,
@@ -412,12 +423,87 @@ namespace APIRelay
             public ApiRouteKind RouteHelperServerProtocol { get; set; } = ApiRouteKind.ChatCompletions;
             public ApiRouteKind? RouteHelperToolProtocol { get; set; }
             public bool AutoStartRelay { get; set; }
+            public bool RelayShouldRun { get; set; }
             public bool ProtocolTraceVisible { get; set; }
             public int? UsageBubbleLocationX { get; set; }
             public int? UsageBubbleLocationY { get; set; }
             public List<ProviderEndpointConfig> ProviderConfigs { get; set; } = new();
+            public List<RegisteredModelConfig> RegisteredModels { get; set; } = new();
+            public ToolConfigurationSettings ToolConfiguration { get; set; } = new();
             [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public List<ModelCostConfig>? ModelCosts { get; set; }
+        }
+
+        private sealed class RegisteredModelConfig
+        {
+            public ApiRouteKind Protocol { get; set; }
+            public string ModelId { get; set; } = string.Empty;
+            public string DisplayName { get; set; } = string.Empty;
+            public DateTime RegisteredAtUtc { get; set; }
+        }
+
+        private sealed class RegisteredModelIdentityComparer : IEqualityComparer<(ApiRouteKind Protocol, string ModelId)>
+        {
+            public bool Equals((ApiRouteKind Protocol, string ModelId) left, (ApiRouteKind Protocol, string ModelId) right)
+            {
+                return left.Protocol == right.Protocol && StringComparer.Ordinal.Equals(left.ModelId, right.ModelId);
+            }
+
+            public int GetHashCode((ApiRouteKind Protocol, string ModelId) value)
+            {
+                return HashCode.Combine(value.Protocol, StringComparer.Ordinal.GetHashCode(value.ModelId));
+            }
+        }
+
+        private sealed class ToolConfigurationSettings
+        {
+            public ClaudeToolSettings Claude { get; set; } = new();
+            public CodexToolSettings Codex { get; set; } = new();
+        }
+
+        private sealed class ClaudeToolSettings
+        {
+            public string HaikuModelAlias { get; set; } = string.Empty;
+            public string SonnetModelAlias { get; set; } = string.Empty;
+            public string OpusModelAlias { get; set; } = string.Empty;
+            public bool EnableToolSearch { get; set; }
+            public bool UseMaximumEffort { get; set; }
+            [JsonIgnore]
+            public bool Enabled { get; set; }
+        }
+
+        private sealed class CodexToolSettings
+        {
+            public string ModelAlias { get; set; } = string.Empty;
+            public string ReasoningEffort { get; set; } = string.Empty;
+            [JsonIgnore]
+            public bool Enabled { get; set; }
+        }
+
+        private sealed record ManagedRuntimeRoute(
+            string Alias,
+            ApiRouteKind Protocol,
+            string ModelId,
+            Uri ProviderUri,
+            string ApiKey,
+            string AnthropicVersion,
+            bool ForceCache,
+            bool CacheOnConversion);
+
+        private sealed class ManagedConfigurationApplyState
+        {
+            public ManagedToolKind Tool { get; set; }
+            public string TargetPath { get; set; } = string.Empty;
+            public string BackupPath { get; set; } = string.Empty;
+            public bool TargetOriginallyExisted { get; set; }
+            public bool RestoreCompleted { get; set; }
+            public DateTime AppliedAtUtc { get; set; }
+        }
+
+        private sealed class ProtectedProviderSecret
+        {
+            public ApiRouteKind Protocol { get; set; }
+            public string ProtectedValue { get; set; } = string.Empty;
         }
 
         private sealed class ProviderEndpointConfig

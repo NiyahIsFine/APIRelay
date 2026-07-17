@@ -23,7 +23,7 @@ namespace APIRelay
             private readonly Dictionary<ApiRouteKind, CheckBox> cacheOnConversionCheckBoxes = new();
             private readonly AppLanguage language;
 
-            public ProviderSettingsForm(IEnumerable<ProviderEndpointConfig> providerConfigs, AppLanguage language)
+            public ProviderSettingsForm(IEnumerable<ProviderEndpointConfig> providerConfigs, AppLanguage language, bool readOnly = false)
             {
                 this.language = language;
                 Text = AppTexts.GetText(language, TextId.Txt115);
@@ -43,7 +43,7 @@ namespace APIRelay
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 134F));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
                 layout.Controls.Add(CreateRouteGroup(ApiRouteKind.Responses, ProviderType.OpenAICompatible, "Responses", false), 0, 0);
                 layout.Controls.Add(CreateRouteGroup(ApiRouteKind.ChatCompletions, ProviderType.OpenAICompatible, "Chat Completions", false), 0, 1);
@@ -56,30 +56,62 @@ namespace APIRelay
                     WrapContents = false
                 };
 
+                var buttonHeight = UiTheme.GetButtonHeight();
+                var okText = AppTexts.GetText(language, TextId.Txt111);
                 var okButton = new Button
                 {
-                    Text = AppTexts.GetText(language, TextId.Txt111),
+                    Text = okText,
                     DialogResult = DialogResult.OK,
-                    Size = new Size(80, 28),
-                    Margin = new Padding(8, 7, 0, 0)
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    MinimumSize = new Size(UiTheme.GetButtonWidth(okText, minimumWidth: 80), buttonHeight),
+                    Margin = new Padding(8, 5, 0, 0)
                 };
                 okButton.Click += OkButton_Click;
 
+                var cancelText = AppTexts.GetText(language, TextId.Txt112);
                 var cancelButton = new Button
                 {
-                    Text = AppTexts.GetText(language, TextId.Txt112),
+                    Text = cancelText,
                     DialogResult = DialogResult.Cancel,
-                    Size = new Size(80, 28),
-                    Margin = new Padding(8, 7, 0, 0)
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    MinimumSize = new Size(UiTheme.GetButtonWidth(cancelText, minimumWidth: 80), buttonHeight),
+                    Margin = new Padding(8, 5, 0, 0)
                 };
 
                 buttonPanel.Controls.Add(okButton);
                 buttonPanel.Controls.Add(cancelButton);
+
+                Label? readOnlyHint = null;
+                if (readOnly)
+                {
+                    // Relay is running: let the user inspect the routes but block saving so an
+                    // in-flight request never reads a half-changed provider URL/model/version.
+                    okButton.Enabled = false;
+                    readOnlyHint = new Label
+                    {
+                        AutoSize = true,
+                        Margin = new Padding(0, 9, 8, 0),
+                        Text = AppTexts.GetText(language, TextId.Txt134),
+                        TextAlign = ContentAlignment.MiddleLeft
+                    };
+                    buttonPanel.Controls.Add(readOnlyHint);
+                }
+
                 layout.Controls.Add(buttonPanel, 0, 3);
                 Controls.Add(layout);
 
                 AcceptButton = okButton;
                 CancelButton = cancelButton;
+
+                UiTheme.StyleDialog(this);
+
+                if (readOnlyHint != null)
+                {
+                    // Set after StyleDialog, which would otherwise force every label to the base text color.
+                    readOnlyHint.ForeColor = UiTheme.Warning;
+                }
             }
 
             public List<ProviderEndpointConfig> ProviderConfigs { get; private set; }
@@ -108,11 +140,12 @@ namespace APIRelay
                 };
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118F));
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+                var controlRowHeight = UiTheme.GetButtonHeight();
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, controlRowHeight));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, controlRowHeight));
                 if (showAnthropicVersion)
                 {
-                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+                    layout.RowStyles.Add(new RowStyle(SizeType.Absolute, controlRowHeight));
                 }
 
                 var urlTextBox = new TextBox { Dock = DockStyle.Fill, Text = config.ProviderUrl, PlaceholderText = GetProviderUrlPlaceholder(routeKind, language) };
@@ -137,6 +170,7 @@ namespace APIRelay
                 urlTextBoxes[routeKind] = urlTextBox;
                 modelListUrlTextBoxes[routeKind] = modelListUrlTextBox;
                 modelListOverwriteCheckBoxes[routeKind] = overwriteCheckBox;
+                UiTheme.StyleButtonCheckBox(overwriteCheckBox);
 
                 urlTextBox.TextChanged += (_, _) => UpdateModelListUrl(routeKind);
                 overwriteCheckBox.CheckedChanged += (_, _) => UpdateModelListUrl(routeKind);
@@ -151,14 +185,14 @@ namespace APIRelay
                     var versionTextBox = new TextBox { Width = 180, Margin = new Padding(0, 3, 12, 3), Text = string.IsNullOrWhiteSpace(config.AnthropicVersion) ? "2023-06-01" : config.AnthropicVersion };
                     anthropicVersionTextBoxes[routeKind] = versionTextBox;
 
-                    var forceCacheCheckBox = new CheckBox
+                    var forceCacheCheckBox = new ThemeCheckBox
                     {
                         AutoSize = true,
                         Checked = config.ForceCache,
                         Margin = new Padding(0, 5, 12, 3),
                         Text = AppTexts.GetText(language, TextId.Txt131)
                     };
-                    var cacheOnConversionCheckBox = new CheckBox
+                    var cacheOnConversionCheckBox = new ThemeCheckBox
                     {
                         AutoSize = true,
                         Checked = config.CacheOnConversion,
@@ -259,6 +293,7 @@ namespace APIRelay
                 var modelListUrlTextBox = modelListUrlTextBoxes[routeKind];
                 var overwriteCheckBox = modelListOverwriteCheckBoxes[routeKind];
                 modelListUrlTextBox.Enabled = overwriteCheckBox.Checked;
+                UiTheme.StyleButtonCheckBox(overwriteCheckBox);
 
                 if (!overwriteCheckBox.Checked)
                 {
@@ -276,7 +311,7 @@ namespace APIRelay
                     RowCount = 1
                 };
                 panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92F));
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiTheme.GetButtonWidth(overwriteCheckBox.Text, UiTheme.DefaultFont, 92)));
                 panel.Controls.Add(modelListUrlTextBox, 0, 0);
                 panel.Controls.Add(overwriteCheckBox, 1, 0);
                 return panel;
