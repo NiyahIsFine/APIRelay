@@ -21,4 +21,16 @@
     <PackageReference Include="Tomlyn" Version="2.10.1" />
   </ItemGroup>
 
+  <Target Name="BuildSingleExe" AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(BuildingSingleExe)' != 'true'">
+    <PropertyGroup>
+      <_SingleExePublishDir>$(BaseIntermediateOutputPath)single-exe\$(Configuration)\</_SingleExePublishDir>
+      <_SingleExeOutput>$(TargetDir)$(AssemblyName)-single.exe</_SingleExeOutput>
+    </PropertyGroup>
+
+    <Exec Command="dotnet publish &quot;$(MSBuildProjectFullPath)&quot; -c &quot;$(Configuration)&quot; -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -p:BuildingSingleExe=true -o &quot;$(_SingleExePublishDir)&quot;" />
+    <Copy SourceFiles="$(_SingleExePublishDir)$(AssemblyName).exe" DestinationFiles="$(_SingleExeOutput)" />
+    <RemoveDir Directories="$(_SingleExePublishDir);$(TargetDir)win-x64" />
+  </Target>
+
 </Project>

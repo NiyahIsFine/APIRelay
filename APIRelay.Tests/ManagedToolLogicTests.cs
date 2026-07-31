@@ -318,6 +318,29 @@ public sealed class ManagedToolLogicTests
     }
 
     [Fact]
+    public void LegacyRequestRecordWithoutCostDeserializesAsMissing()
+    {
+        var recordType = FormType.GetNestedType("RequestRecord", BindingFlags.NonPublic)!;
+        var record = JsonSerializer.Deserialize("{\"Model\":\"legacy-model\",\"PromptTokens\":100}", recordType)!;
+
+        Assert.Null(recordType.GetProperty("Cost")!.GetValue(record));
+    }
+
+    [Fact]
+    public void RequestRecordCostRoundTrips()
+    {
+        var recordType = FormType.GetNestedType("RequestRecord", BindingFlags.NonPublic)!;
+        var record = Activator.CreateInstance(recordType)!;
+        recordType.GetProperty("Model")!.SetValue(record, "priced-model");
+        recordType.GetProperty("Cost")!.SetValue(record, (decimal?)0.123456m);
+
+        var json = JsonSerializer.Serialize(record, recordType);
+        var restored = JsonSerializer.Deserialize(json, recordType)!;
+
+        Assert.Equal(0.123456m, recordType.GetProperty("Cost")!.GetValue(restored));
+    }
+
+    [Fact]
     public void AnthropicMessageStartUsageReadsNestedModelAndCacheTokens()
     {
         // Anthropic streams usage/model nested under "message" in message_start. Reading only the

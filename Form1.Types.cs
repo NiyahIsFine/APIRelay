@@ -70,6 +70,7 @@ namespace APIRelay
             public int CacheCreationTokens { get; set; }
             public bool CacheTokensSeparateFromInput { get; set; }
             public int TotalTokens { get; set; }
+            public decimal? Cost { get; set; }
             public long ElapsedMs { get; set; }
             public long FirstResponseMs { get; set; }
         }

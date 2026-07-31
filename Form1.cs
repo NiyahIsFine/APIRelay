@@ -325,10 +325,7 @@ namespace APIRelay
             modelCosts.AddRange(dialog.ModelCosts);
             SaveModelCosts();
             SaveSettings();
-            RefreshRecordGrid();
-            UpdateTotals();
-            UpdateUsageBubble();
-            dailyChartPanel.Invalidate();
+            LoadRecordsForSelectedDate();
             AppendLog(GetText(TextId.Txt48), true);
         }
 
@@ -357,8 +354,7 @@ namespace APIRelay
         {
             statsAllDates = !statsAllDates;
             UpdateStatsScopeButtonText();
-            UpdateTotals();
+            UpdateTotals(populateMissingCosts: true);
         }
     }
 }
-

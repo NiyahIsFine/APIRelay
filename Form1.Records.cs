@@ -293,6 +293,7 @@ namespace APIRelay
                 ElapsedMs = elapsedMs,
                 FirstResponseMs = firstResponseMs
             };
+            record.Cost = CalculateConfiguredRecordCost(record);
 
             var isFirstRecordForDate = SaveRequestRecord(record);
 
@@ -333,10 +334,15 @@ namespace APIRelay
 
         private decimal CalculateRecordCost(RequestRecord record)
         {
+            return record.Cost ?? CalculateConfiguredRecordCost(record) ?? 0m;
+        }
+
+        private decimal? CalculateConfiguredRecordCost(RequestRecord record)
+        {
             var modelCost = FindModelCost(record.Model);
             if (modelCost == null)
             {
-                return 0m;
+                return null;
             }
 
             var billableInputTokens = CalculateBillableInputTokens(record);
@@ -348,6 +354,12 @@ namespace APIRelay
 
         private string BuildCostFormulaText(RequestRecord record)
         {
+            var totalCost = CalculateRecordCost(record);
+            if (record.Cost.HasValue)
+            {
+                return GetText(TextId.Txt86, FormatCurrency(totalCost));
+            }
+
             var billableInputTokens = CalculateBillableInputTokens(record);
             var modelCost = FindModelCost(record.Model);
             if (modelCost == null)
@@ -359,7 +371,7 @@ namespace APIRelay
             var outputCost = record.CompletionTokens * modelCost.OutputCostPerMillion / 1_000_000m;
             var cacheHitCost = record.CachedTokens * modelCost.CacheHitCostPerMillion / 1_000_000m;
             var cacheCreationCost = record.CacheCreationTokens * modelCost.CacheCreationCostPerMillion / 1_000_000m;
-            var totalCost = inputCost + outputCost + cacheHitCost + cacheCreationCost;
+            totalCost = inputCost + outputCost + cacheHitCost + cacheCreationCost;
             var inputMode = record.CacheTokensSeparateFromInput
                 ? GetText(TextId.Txt79)
                 : GetText(TextId.Txt80);
@@ -410,9 +422,14 @@ namespace APIRelay
             return "$" + value.ToString("0.000000", CultureInfo.InvariantCulture);
         }
 
-        private void UpdateTotals()
+        private void UpdateTotals(bool populateMissingCosts = false)
         {
-            var records = statsAllDates ? LoadAllRecords() : visibleRecords;
+            if (populateMissingCosts && !statsAllDates)
+            {
+                PopulateAndSaveVisibleRecordCosts();
+            }
+
+            var records = statsAllDates ? LoadAllRecords(populateMissingCosts) : visibleRecords;
             promptTokens = records.Sum(record => (long)CalculateTotalInputTokens(record));
             completionTokens = records.Sum(record => (long)record.CompletionTokens);
             cachedTokens = records.Sum(record => (long)record.CachedTokens);
@@ -526,7 +543,8 @@ namespace APIRelay
             {
                 try
                 {
-                    visibleRecords.AddRange(LoadRecordsFromPath(recordPath).OrderByDescending(record => record.Timestamp));
+                    var records = LoadRecordsFromPath(recordPath, populateMissingCosts: true);
+                    visibleRecords.AddRange(records.OrderByDescending(record => record.Timestamp));
                 }
                 catch (JsonException ex)
                 {
@@ -569,11 +587,17 @@ namespace APIRelay
             }
         }
 
-        private List<RequestRecord> LoadRecordsFromPath(string recordPath)
+        private List<RequestRecord> LoadRecordsFromPath(string recordPath, bool populateMissingCosts = false)
         {
             lock (recordsLock)
             {
-                return JsonSerializer.Deserialize<List<RequestRecord>>(File.ReadAllText(recordPath)) ?? new List<RequestRecord>();
+                var records = JsonSerializer.Deserialize<List<RequestRecord>>(File.ReadAllText(recordPath)) ?? new List<RequestRecord>();
+                if (populateMissingCosts && PopulateMissingRecordCosts(records))
+                {
+                    WriteRecordsToPath(recordPath, records);
+                }
+
+                return records;
             }
         }
 
@@ -636,17 +660,20 @@ namespace APIRelay
             };
         }
 
-        private List<RequestRecord> LoadAllRecords()
+        private List<RequestRecord> LoadAllRecords(bool populateMissingCosts = false)
         {
             var records = new List<RequestRecord>();
+            var recordPathsToUpdate = new List<string>();
 
             foreach (var recordPath in Directory.GetFiles(recordsDirectory, "*.json"))
             {
                 try
                 {
-                    lock (recordsLock)
+                    var dateRecords = LoadRecordsFromPath(recordPath);
+                    records.AddRange(dateRecords);
+                    if (populateMissingCosts && PopulateMissingRecordCosts(dateRecords))
                     {
-                        records.AddRange(JsonSerializer.Deserialize<List<RequestRecord>>(File.ReadAllText(recordPath)) ?? new List<RequestRecord>());
+                        recordPathsToUpdate.Add(recordPath);
                     }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -655,7 +682,57 @@ namespace APIRelay
                 }
             }
 
+            foreach (var recordPath in recordPathsToUpdate)
+            {
+                try
+                {
+                    LoadRecordsFromPath(recordPath, populateMissingCosts: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    AppendLog(GetText(TextId.Txt89, Path.GetFileName(recordPath), ex.Message), true);
+                }
+            }
+
             return records;
+        }
+
+        private bool PopulateMissingRecordCosts(IEnumerable<RequestRecord> records)
+        {
+            var updated = false;
+            foreach (var record in records)
+            {
+                if (record.Cost.HasValue)
+                {
+                    continue;
+                }
+
+                var cost = CalculateConfiguredRecordCost(record);
+                if (!cost.HasValue)
+                {
+                    continue;
+                }
+
+                record.Cost = cost.Value;
+                updated = true;
+            }
+
+            return updated;
+        }
+
+        private void PopulateAndSaveVisibleRecordCosts()
+        {
+            if (!PopulateMissingRecordCosts(visibleRecords))
+            {
+                return;
+            }
+
+            LoadRecordsFromPath(GetRecordPath(GetSelectedRecordDate()), populateMissingCosts: true);
+        }
+
+        private static void WriteRecordsToPath(string recordPath, List<RequestRecord> records)
+        {
+            File.WriteAllText(recordPath, JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
         }
 
         private bool SaveRequestRecord(RequestRecord record)
