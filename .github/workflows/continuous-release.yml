@@ -1,0 +1,85 @@
+name: Continuous Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: continuous-release
+  cancel-in-progress: true
+
+env:
+  PROJECT_FILE: APIRelay.csproj
+  APP_NAME: APIRelay
+  RELEASE_TAG: continuous
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore $env:PROJECT_FILE
+
+      # APIRelay.csproj's BuildSingleExe target also creates APIRelay-single.exe.
+      - name: Build release files
+        run: dotnet build $env:PROJECT_FILE --configuration Release --no-restore
+
+      - name: Package release assets
+        shell: pwsh
+        run: |
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "bin/Release/net8.0-windows"
+          $stagingDir = Join-Path $env:RUNNER_TEMP "normal-release"
+          $zipPath = Join-Path $env:RUNNER_TEMP "$env:APP_NAME.zip"
+          $singleSource = Join-Path $outputDir "$env:APP_NAME-single.exe"
+          $singleAsset = Join-Path $env:RUNNER_TEMP "$env:APP_NAME-single.exe"
+
+          if (-not (Test-Path $singleSource)) {
+            throw "Single-file executable was not generated: $singleSource"
+          }
+
+          New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+
+          $normalFiles = Get-ChildItem -Path $outputDir -File | Where-Object {
+            $_.Name -ne "$env:APP_NAME-single.exe" -and
+            $_.Extension -in '.exe', '.dll', '.pdb', '.json'
+          }
+
+          if (-not $normalFiles) {
+            throw "No normal release files were generated in $outputDir"
+          }
+
+          Copy-Item -Path $normalFiles.FullName -Destination $stagingDir
+          Copy-Item -Path $singleSource -Destination $singleAsset
+          Compress-Archive -Path (Join-Path $stagingDir '*') -DestinationPath $zipPath -Force
+
+          "ZIP_ASSET=$zipPath" >> $env:GITHUB_ENV
+          "SINGLE_ASSET=$singleAsset" >> $env:GITHUB_ENV
+
+      - name: Move continuous tag to this commit
+        shell: pwsh
+        run: |
+          git tag --force $env:RELEASE_TAG $env:GITHUB_SHA
+          git push origin "refs/tags/$env:RELEASE_TAG" --force
+
+      - name: Replace continuous release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG $env:ZIP_ASSET $env:SINGLE_ASSET --clobber
