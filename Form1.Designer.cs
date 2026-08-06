@@ -66,6 +66,8 @@
             completionTokensValueLabel = new Label();
             cachedTokensLabel = new Label();
             cachedTokensValueLabel = new Label();
+            cacheCreationTokensLabel = new Label();
+            cacheCreationTokensValueLabel = new Label();
             totalCostLabel = new Label();
             totalCostValueLabel = new Label();
             statsScopeButton = new Button();
@@ -114,7 +116,7 @@
             mainLayout.RowCount = 7;
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 194F));
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 170F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
@@ -466,6 +468,8 @@
             // usageGroupBox
             // 
             usageGroupBox.Controls.Add(usageLayout);
+            usageGroupBox.Controls.Add(statsScopeButton);
+            statsScopeButton.BringToFront();
             usageGroupBox.Dock = DockStyle.Fill;
             usageGroupBox.Location = new Point(3, 199);
             usageGroupBox.Name = "usageGroupBox";
@@ -477,30 +481,32 @@
             // usageLayout
             // 
             usageLayout.ColumnCount = 9;
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116F));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            usageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             usageLayout.Controls.Add(promptTokensLabel, 0, 0);
             usageLayout.Controls.Add(promptTokensValueLabel, 1, 0);
             usageLayout.Controls.Add(completionTokensLabel, 2, 0);
             usageLayout.Controls.Add(completionTokensValueLabel, 3, 0);
             usageLayout.Controls.Add(cachedTokensLabel, 4, 0);
             usageLayout.Controls.Add(cachedTokensValueLabel, 5, 0);
-            usageLayout.Controls.Add(totalCostLabel, 6, 0);
-            usageLayout.Controls.Add(totalCostValueLabel, 7, 0);
-            usageLayout.Controls.Add(statsScopeButton, 8, 0);
+            usageLayout.Controls.Add(cacheCreationTokensLabel, 6, 0);
+            usageLayout.Controls.Add(cacheCreationTokensValueLabel, 7, 0);
+            usageLayout.Controls.Add(totalCostLabel, 0, 1);
+            usageLayout.Controls.Add(totalCostValueLabel, 1, 1);
             usageLayout.Dock = DockStyle.Fill;
             usageLayout.Location = new Point(3, 19);
             usageLayout.Name = "usageLayout";
-            usageLayout.Padding = new Padding(10);
-            usageLayout.RowCount = 1;
-            usageLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            usageLayout.Padding = new Padding(10, 10, 130, 10);
+            usageLayout.RowCount = 2;
+            usageLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            usageLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             usageLayout.Size = new Size(1048, 54);
             usageLayout.TabIndex = 0;
             // 
@@ -531,6 +537,7 @@
             // 
             completionTokensLabel.AutoSize = true;
             completionTokensLabel.Dock = DockStyle.Fill;
+            completionTokensLabel.Margin = new Padding(18, 0, 3, 0);
             completionTokensLabel.Location = new Point(234, 10);
             completionTokensLabel.Name = "completionTokensLabel";
             completionTokensLabel.Size = new Size(84, 34);
@@ -554,6 +561,7 @@
             // 
             cachedTokensLabel.AutoSize = true;
             cachedTokensLabel.Dock = DockStyle.Fill;
+            cachedTokensLabel.Margin = new Padding(18, 0, 3, 0);
             cachedTokensLabel.Location = new Point(455, 10);
             cachedTokensLabel.Name = "cachedTokensLabel";
             cachedTokensLabel.Size = new Size(104, 34);
@@ -572,6 +580,26 @@
             cachedTokensValueLabel.TabIndex = 5;
             cachedTokensValueLabel.Text = "0";
             cachedTokensValueLabel.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // cacheCreationTokensLabel
+            // 
+            cacheCreationTokensLabel.AutoSize = true;
+            cacheCreationTokensLabel.Dock = DockStyle.Fill;
+            cacheCreationTokensLabel.Margin = new Padding(18, 0, 3, 0);
+            cacheCreationTokensLabel.Name = "cacheCreationTokensLabel";
+            cacheCreationTokensLabel.TabIndex = 6;
+            cacheCreationTokensLabel.Text = "缓存创建";
+            cacheCreationTokensLabel.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // cacheCreationTokensValueLabel
+            // 
+            cacheCreationTokensValueLabel.AutoSize = true;
+            cacheCreationTokensValueLabel.Dock = DockStyle.Fill;
+            cacheCreationTokensValueLabel.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
+            cacheCreationTokensValueLabel.Name = "cacheCreationTokensValueLabel";
+            cacheCreationTokensValueLabel.TabIndex = 7;
+            cacheCreationTokensValueLabel.Text = "0($0.000000)";
+            cacheCreationTokensValueLabel.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // totalCostLabel
             // 
@@ -598,8 +626,8 @@
             // 
             // statsScopeButton
             // 
-            statsScopeButton.Dock = DockStyle.Fill;
-            statsScopeButton.Location = new Point(925, 13);
+            statsScopeButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            statsScopeButton.Location = new Point(931, 39);
             statsScopeButton.Margin = new Padding(3, 3, 3, 3);
             statsScopeButton.Name = "statsScopeButton";
             statsScopeButton.Size = new Size(110, 28);
@@ -617,7 +645,7 @@
             dailyChartGroupBox.Size = new Size(1054, 164);
             dailyChartGroupBox.TabIndex = 3;
             dailyChartGroupBox.TabStop = false;
-            dailyChartGroupBox.Text = "当前日期半小时趋势（输入/输出/缓存命中/花费）";
+            dailyChartGroupBox.Text = "当前日期半小时趋势";
             // 
             // dailyChartPanel
             // 
@@ -818,6 +846,8 @@
         private Label completionTokensValueLabel;
         private Label cachedTokensLabel;
         private Label cachedTokensValueLabel;
+        private Label cacheCreationTokensLabel;
+        private Label cacheCreationTokensValueLabel;
         private Label totalCostLabel;
         private Label totalCostValueLabel;
         private Button statsScopeButton;

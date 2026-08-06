@@ -74,6 +74,7 @@ namespace APIRelay
             promptTokensLabel.Text = GetText(TextId.Txt19);
             completionTokensLabel.Text = GetText(TextId.Txt20);
             cachedTokensLabel.Text = GetText(TextId.Txt21);
+            cacheCreationTokensLabel.Text = GetText(TextId.Txt137);
             totalCostLabel.Text = GetText(TextId.Txt22);
             dailyChartGroupBox.Text = GetText(TextId.Txt23);
             recordDateLabel.Text = GetText(TextId.Txt24);

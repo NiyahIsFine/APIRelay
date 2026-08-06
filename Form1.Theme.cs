@@ -17,6 +17,7 @@ namespace APIRelay
             StyleStatValueLabel(promptTokensValueLabel, UiTheme.SeriesInput);
             StyleStatValueLabel(completionTokensValueLabel, UiTheme.SeriesOutput);
             StyleStatValueLabel(cachedTokensValueLabel, UiTheme.SeriesCache);
+            StyleStatValueLabel(cacheCreationTokensValueLabel, UiTheme.SeriesCacheCreation);
             StyleStatValueLabel(totalCostValueLabel, UiTheme.SeriesCost);
 
             // Status pill color is driven by running state in SetRunningState; just neutralize here.

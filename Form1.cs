@@ -53,6 +53,8 @@ namespace APIRelay
         private const int DefaultAnthropicMaxTokens = 8192;
         private const long StreamingProgressLogIntervalMs = 5000;
         private const long StreamingProgressLogBytes = 256 * 1024;
+        private const int ProtocolLogFileCount = 20;
+        private const long ProtocolLogFileMaxBytes = 100L * 1024 * 1024;
         private bool loadingRecordDates;
         private bool statsAllDates;
         private bool allowExit;
@@ -271,8 +273,8 @@ namespace APIRelay
         {
             try
             {
-                EnsureProtocolLogFile();
-                Process.Start(new ProcessStartInfo(protocolLogPath) { UseShellExecute = true });
+                var activeProtocolLogPath = EnsureProtocolLogFile();
+                Process.Start(new ProcessStartInfo(activeProtocolLogPath) { UseShellExecute = true });
             }
             catch (Exception ex)
             {

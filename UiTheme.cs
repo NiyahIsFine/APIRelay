@@ -48,6 +48,7 @@ namespace APIRelay
         public static readonly Color SeriesInput = Color.FromArgb(0x6A, 0xA6, 0xFF);
         public static readonly Color SeriesOutput = Color.FromArgb(0x76, 0xDE, 0xA2);
         public static readonly Color SeriesCache = Color.FromArgb(0xE0, 0xA4, 0x58);
+        public static readonly Color SeriesCacheCreation = Color.FromArgb(0xB4, 0x8E, 0xD8);
         public static readonly Color SeriesCost = Color.FromArgb(0xE0, 0x7A, 0xB0);
 
         // ── Grid ───────────────────────────────────────────────────────────
@@ -65,8 +66,8 @@ namespace APIRelay
         // ── Layout metrics ─────────────────────────────────────────────────
         public const int Radius = 6;
         public const int ControlHeight = 30;
-        private const int ButtonHorizontalPadding = 12;
-        private const int ButtonVerticalAllowance = 12;
+        private const int ButtonHorizontalPadding = 2;
+        private const int ButtonVerticalAllowance = 8;
 
         /// <summary>Returns a button height based on the actual rendered font metrics.</summary>
         public static int GetButtonHeight(Font? font = null)

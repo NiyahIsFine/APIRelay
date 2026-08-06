@@ -140,6 +140,8 @@ namespace APIRelay
         Txt134, // 运行中只读提示
         Txt135, // 内置模型不可删除
         Txt136, // 模型名称重复
+        Txt137, // 缓存创建
+        Txt138, // 图表缓存创建提示
     }
 
     internal static class AppTexts
@@ -168,7 +170,7 @@ namespace APIRelay
             [TextId.Txt20] = ("Output", "输出"),
             [TextId.Txt21] = ("Cache Hit", "缓存命中"),
             [TextId.Txt22] = ("Cost", "花费"),
-            [TextId.Txt23] = ("Current Date Half-Hour Trend (input/output/cache/cost)", "当前日期半小时趋势（输入/输出/缓存命中/花费）"),
+            [TextId.Txt23] = ("Current Date Half-Hour Trend", "当前日期半小时趋势"),
             [TextId.Txt24] = ("Record Date:", "记录日期："),
             [TextId.Txt25] = ("Time", "时间"),
             [TextId.Txt26] = ("Model", "模型"),
@@ -282,6 +284,8 @@ namespace APIRelay
             [TextId.Txt134] = ("The relay is running, so provider settings are read-only. Stop the relay to make changes.", "代理正在运行，供应商配置为只读。停止代理后即可修改。"),
             [TextId.Txt135] = ("Built-in models cannot be deleted.", "内置模型不能删除。"),
             [TextId.Txt136] = ("Model names must be unique.", "模型名称不能重复。"),
+            [TextId.Txt137] = ("Cache Creation", "缓存创建"),
+            [TextId.Txt138] = ("Cache Creation: {0:N0}", "缓存创建: {0:N0}"),
         };
 
         public static string GetText(AppLanguage language, TextId id, params object[] args)

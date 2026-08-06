@@ -422,6 +422,30 @@ namespace APIRelay
             return "$" + value.ToString("0.000000", CultureInfo.InvariantCulture);
         }
 
+        private (decimal Input, decimal Output, decimal CacheHit, decimal CacheCreation) CalculateUsageCosts(IEnumerable<RequestRecord> records)
+        {
+            decimal input = 0m;
+            decimal output = 0m;
+            decimal cacheHit = 0m;
+            decimal cacheCreation = 0m;
+
+            foreach (var record in records)
+            {
+                var modelCost = FindModelCost(record.Model);
+                if (modelCost == null)
+                {
+                    continue;
+                }
+
+                input += CalculateBillableInputTokens(record) * modelCost.InputCostPerMillion / 1_000_000m;
+                output += record.CompletionTokens * modelCost.OutputCostPerMillion / 1_000_000m;
+                cacheHit += record.CachedTokens * modelCost.CacheHitCostPerMillion / 1_000_000m;
+                cacheCreation += record.CacheCreationTokens * modelCost.CacheCreationCostPerMillion / 1_000_000m;
+            }
+
+            return (input, output, cacheHit, cacheCreation);
+        }
+
         private void UpdateTotals(bool populateMissingCosts = false)
         {
             if (populateMissingCosts && !statsAllDates)
@@ -436,10 +460,12 @@ namespace APIRelay
             cacheCreationTokens = records.Sum(record => (long)record.CacheCreationTokens);
             totalTokens = records.Sum(record => (long)record.TotalTokens);
             var totalCost = records.Sum(CalculateRecordCost);
+            var usageCosts = CalculateUsageCosts(records);
 
-            promptTokensValueLabel.Text = promptTokens.ToString();
-            completionTokensValueLabel.Text = completionTokens.ToString();
-            cachedTokensValueLabel.Text = cachedTokens.ToString();
+            promptTokensValueLabel.Text = $"{promptTokens:N0}({FormatCurrency(usageCosts.Input)})";
+            completionTokensValueLabel.Text = $"{completionTokens:N0}({FormatCurrency(usageCosts.Output)})";
+            cachedTokensValueLabel.Text = $"{cachedTokens:N0}({FormatCurrency(usageCosts.CacheHit)})";
+            cacheCreationTokensValueLabel.Text = $"{cacheCreationTokens:N0}({FormatCurrency(usageCosts.CacheCreation)})";
             totalCostValueLabel.Text = FormatCurrency(totalCost);
         }
 

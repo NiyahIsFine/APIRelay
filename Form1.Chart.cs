@@ -55,7 +55,7 @@ namespace APIRelay
             }
 
             var buckets = BuildDailyChartBuckets();
-            var maxTokenValue = buckets.Max(bucket => Math.Max(bucket.InputTokens, Math.Max(bucket.OutputTokens, bucket.CachedTokens)));
+            var maxTokenValue = buckets.Max(bucket => Math.Max(Math.Max(bucket.InputTokens, bucket.OutputTokens), Math.Max(bucket.CachedTokens, bucket.CacheCreationTokens)));
             var maxCostValue = buckets.Max(bucket => bucket.Cost);
             var tokenScaleMax = RoundTokenScaleMax(maxTokenValue);
             var costScaleMax = RoundCostScaleMax(maxCostValue);
@@ -83,7 +83,7 @@ namespace APIRelay
             DrawLegend(graphics, bounds, legendFont);
             DrawXAxisLabels(graphics, chartBounds, legendFont, textBrush);
 
-            if (buckets.All(bucket => bucket.InputTokens == 0 && bucket.OutputTokens == 0 && bucket.CachedTokens == 0 && bucket.Cost == 0m))
+            if (buckets.All(bucket => bucket.InputTokens == 0 && bucket.OutputTokens == 0 && bucket.CachedTokens == 0 && bucket.CacheCreationTokens == 0 && bucket.Cost == 0m))
             {
                 var emptyText = GetText(TextId.Txt72);
                 var emptySize = TextRenderer.MeasureText(emptyText, Font);
@@ -94,6 +94,7 @@ namespace APIRelay
             DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.InputTokens).ToArray(), tokenScaleMax, UiTheme.SeriesInput);
             DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.OutputTokens).ToArray(), tokenScaleMax, UiTheme.SeriesOutput);
             DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.CachedTokens).ToArray(), tokenScaleMax, UiTheme.SeriesCache);
+            DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.CacheCreationTokens).ToArray(), tokenScaleMax, UiTheme.SeriesCacheCreation);
             DrawSeries(graphics, chartBounds, buckets.Select(bucket => (double)bucket.Cost).ToArray(), (double)costScaleMax, UiTheme.SeriesCost);
             DrawHoverDetails(graphics, bounds, chartBounds, buckets, legendFont);
         }
@@ -124,6 +125,7 @@ namespace APIRelay
                 (GetText(TextId.Txt19), UiTheme.SeriesInput),
                 (GetText(TextId.Txt20), UiTheme.SeriesOutput),
                 (GetText(TextId.Txt21), UiTheme.SeriesCache),
+                (GetText(TextId.Txt137), UiTheme.SeriesCacheCreation),
                 (GetText(TextId.Txt22), UiTheme.SeriesCost)
             };
 
@@ -133,7 +135,7 @@ namespace APIRelay
                 using var pen = new Pen(color, 2F);
                 graphics.DrawLine(pen, x, bounds.Top + 9, x + 18, bounds.Top + 9);
                 TextRenderer.DrawText(graphics, text, font, new Point(x + 22, bounds.Top + 2), color);
-                x += text.Length > 2 ? 92 : 58;
+                x += TextRenderer.MeasureText(text, font).Width + 38;
             }
         }
 
@@ -151,7 +153,8 @@ namespace APIRelay
             var format = new StringFormat
             {
                 Alignment = alignment == ContentAlignment.MiddleRight ? StringAlignment.Far : StringAlignment.Near,
-                LineAlignment = StringAlignment.Center
+                LineAlignment = StringAlignment.Center,
+                FormatFlags = StringFormatFlags.NoWrap
             };
 
             graphics.DrawString(text, font, brush, bounds, format);
@@ -189,6 +192,7 @@ namespace APIRelay
                 GetText(TextId.Txt73, bucket.InputTokens),
                 GetText(TextId.Txt74, bucket.OutputTokens),
                 GetText(TextId.Txt75, bucket.CachedTokens),
+                GetText(TextId.Txt138, bucket.CacheCreationTokens),
                 GetText(TextId.Txt76, FormatCurrency(bucket.Cost))
             };
 
@@ -211,7 +215,8 @@ namespace APIRelay
                     1 => UiTheme.SeriesInput,
                     2 => UiTheme.SeriesOutput,
                     3 => UiTheme.SeriesCache,
-                    4 => UiTheme.SeriesCost,
+                    4 => UiTheme.SeriesCacheCreation,
+                    5 => UiTheme.SeriesCost,
                     _ => UiTheme.TextSecondary
                 };
                 TextRenderer.DrawText(graphics, lines[index], font, new Point(tooltipBounds.Left + 8, tooltipBounds.Top + 6 + index * lineHeight), color);
@@ -263,7 +268,17 @@ namespace APIRelay
 
         private static string FormatTokenTick(long value)
         {
-            return value.ToString("N0", CultureInfo.InvariantCulture);
+            if (value >= 1_000_000)
+            {
+                return (value / 1_000_000d).ToString("0.##", CultureInfo.InvariantCulture) + "M";
+            }
+
+            if (value >= 1_000)
+            {
+                return (value / 1_000d).ToString("0.##", CultureInfo.InvariantCulture) + "K";
+            }
+
+            return value.ToString(CultureInfo.InvariantCulture);
         }
 
         private static string FormatCostTick(decimal value)

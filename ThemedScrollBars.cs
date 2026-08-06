@@ -178,7 +178,8 @@ namespace APIRelay
             var length = Orientation == Orientation.Vertical ? Height : Width;
             var crossLength = Orientation == Orientation.Vertical ? Width : Height;
             var total = maximum + largeChange;
-            var thumbLength = total <= 0 ? length : Math.Clamp((int)Math.Round(length * (double)largeChange / total), MinimumThumbLength, length);
+            var minimumThumbLength = Math.Min(MinimumThumbLength, length);
+            var thumbLength = total <= 0 ? length : Math.Clamp((int)Math.Round(length * (double)largeChange / total), minimumThumbLength, length);
             var available = Math.Max(0, length - thumbLength);
             var offset = maximum == 0 ? 0 : (int)Math.Round(available * (double)value / maximum);
             return Orientation == Orientation.Vertical
