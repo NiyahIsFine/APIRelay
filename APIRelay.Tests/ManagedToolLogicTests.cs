@@ -70,6 +70,19 @@ public sealed class ManagedToolLogicTests
         Assert.Equal(2, document.RootElement.GetProperty("input").GetArrayLength());
     }
 
+    [Theory]
+    [InlineData("provider-response-model", "routed-model", "provider-response-model")]
+    [InlineData("", "routed-model", "routed-model")]
+    [InlineData("", null, "request-alias")]
+    public void RecordedModelUsesResponseThenRoutedThenRequest(string responseModel, string? routedModel, string expected)
+    {
+        var requestBody = Encoding.UTF8.GetBytes("{\"model\":\"request-alias\"}");
+
+        var result = StaticMethod("SelectRecordedModel").Invoke(null, [responseModel, routedModel, requestBody]);
+
+        Assert.Equal(expected, result);
+    }
+
         [Fact]
         public void AnthropicRequestConvertsToResponsesContentAndTools()
         {

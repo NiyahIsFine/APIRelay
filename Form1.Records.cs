@@ -270,7 +270,7 @@ namespace APIRelay
                 : string.Empty;
         }
 
-        private void RecordRequest(HttpListenerRequest request, string providerPath, int statusCode, UsageInfo usage, long elapsedMs, long firstResponseMs, byte[] requestBody)
+        private void RecordRequest(HttpListenerRequest request, string providerPath, int statusCode, UsageInfo usage, long elapsedMs, long firstResponseMs, byte[] requestBody, string? routedModel)
         {
             if (!HasBillableUsage(usage))
             {
@@ -280,7 +280,7 @@ namespace APIRelay
             var record = new RequestRecord
             {
                 Timestamp = DateTime.Now,
-                Model = string.IsNullOrWhiteSpace(usage.Model) ? ExtractRequestModel(requestBody) : usage.Model,
+                Model = SelectRecordedModel(usage.Model, routedModel, requestBody),
                 Path = string.IsNullOrWhiteSpace(providerPath) ? request.Url?.PathAndQuery ?? string.Empty : providerPath,
                 Summary = BuildRequestSummary(request, requestBody),
                 StatusCode = statusCode,
@@ -320,6 +320,16 @@ namespace APIRelay
                 usageBubble?.ShowCostToast(CalculateRecordCost(record));
                 dailyChartPanel.Invalidate();
             });
+        }
+
+        private static string SelectRecordedModel(string responseModel, string? routedModel, byte[] requestBody)
+        {
+            if (!string.IsNullOrWhiteSpace(responseModel))
+            {
+                return responseModel;
+            }
+
+            return !string.IsNullOrWhiteSpace(routedModel) ? routedModel : ExtractRequestModel(requestBody);
         }
 
         private static bool HasBillableUsage(UsageInfo usage)

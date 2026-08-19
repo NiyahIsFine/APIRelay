@@ -237,7 +237,7 @@ namespace APIRelay
                 response.Close();
                 AppendInternalLog($"Request {requestId} response closed. Status={(int)providerResponse.StatusCode}; ElapsedMs={elapsedMs}");
 
-                RecordRequest(request, providerUri.PathAndQuery, (int)providerResponse.StatusCode, usage, elapsedMs, firstResponseMs, requestBody);
+                RecordRequest(request, providerUri.PathAndQuery, (int)providerResponse.StatusCode, usage, elapsedMs, firstResponseMs, requestBody, relayRoute.ManagedRoute?.ModelId);
                 TryBeginInvoke(() => AppendLog(GetText(TextId.Txt68, BuildResponseSummary((int)providerResponse.StatusCode, usage, elapsedMs)), true));
             }
             catch (OperationCanceledException)
