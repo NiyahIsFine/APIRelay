@@ -58,6 +58,20 @@ public sealed class ManagedToolLogicTests
         Assert.False(Assert.IsType<bool>(StaticMethod("TryResolveManagedClientProtocol").Invoke(null, arguments)));
     }
 
+    [Theory]
+    [InlineData("/models", true, "Responses")]
+    [InlineData("/v1/models", true, "Responses")]
+    [InlineData("/compatible/v1/models", true, "ChatCompletions")]
+    [InlineData("/responses/v1/models", true, "Responses")]
+    [InlineData("/v1/chat/completions", false, "ChatCompletions")]
+    public void UnprefixedModelListDefaultsToResponses(string path, bool isModelListRequest, string expectedProtocol)
+    {
+        var route = StaticMethod("ResolveRelayRoute", typeof(string), typeof(bool)).Invoke(null, [path, isModelListRequest])!;
+        var protocol = route.GetType().GetProperty("ToProtocol")!.GetValue(route);
+
+        Assert.Equal(Enum.Parse(ProtocolType, expectedProtocol), protocol);
+    }
+
     [Fact]
     public void RequestModelRewritePreservesOtherJson()
     {

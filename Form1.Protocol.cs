@@ -833,6 +833,13 @@ namespace APIRelay
         private static RelayRoute ResolveRelayRoute(HttpListenerRequest request)
         {
             var absolutePath = request.Url?.AbsolutePath ?? "/";
+            var isModelListRequest = request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
+                && NormalizePathSlashes(absolutePath).TrimEnd('/').EndsWith("/models", StringComparison.OrdinalIgnoreCase);
+            return ResolveRelayRoute(absolutePath, isModelListRequest);
+        }
+
+        private static RelayRoute ResolveRelayRoute(string absolutePath, bool isModelListRequest)
+        {
             if (TryResolveManagedClientProtocol(absolutePath, out var managedClientProtocol))
             {
                 return new RelayRoute(managedClientProtocol, managedClientProtocol, true);
@@ -843,7 +850,7 @@ namespace APIRelay
 
             if (segments.Length == 0 || !TryParseApiRouteKind(segments[0], out var toProtocol))
             {
-                toProtocol = ApiRouteKind.ChatCompletions;
+                toProtocol = isModelListRequest ? ApiRouteKind.Responses : ApiRouteKind.ChatCompletions;
             }
 
             var fromProtocol = toProtocol;
