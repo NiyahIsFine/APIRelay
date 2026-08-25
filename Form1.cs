@@ -72,6 +72,7 @@ namespace APIRelay
         private FlowLayoutPanel protocolTracePanel = null!;
         private CheckBox protocolTraceCheckBox = null!;
         private Button openProtocolLogButton = null!;
+        private ProtocolTraceViewerForm? protocolTraceViewer;
 
         private CancellationTokenSource? listenerCancellation;
         private HttpListener? listener;
@@ -274,7 +275,22 @@ namespace APIRelay
             try
             {
                 var activeProtocolLogPath = EnsureProtocolLogFile();
-                Process.Start(new ProcessStartInfo(activeProtocolLogPath) { UseShellExecute = true });
+                if (protocolTraceViewer is { IsDisposed: false })
+                {
+                    protocolTraceViewer.ApplyLanguage(currentLanguage);
+                    protocolTraceViewer.RefreshLatest(activeProtocolLogPath);
+                    protocolTraceViewer.Show();
+                    protocolTraceViewer.Activate();
+                    return;
+                }
+
+                protocolTraceViewer = new ProtocolTraceViewerForm(
+                    logsDirectory,
+                    ProtocolLogFileCount,
+                    activeProtocolLogPath,
+                    currentLanguage);
+                protocolTraceViewer.FormClosed += (_, _) => protocolTraceViewer = null;
+                protocolTraceViewer.Show(this);
             }
             catch (Exception ex)
             {

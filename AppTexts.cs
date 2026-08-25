@@ -142,6 +142,12 @@ namespace APIRelay
         Txt136, // 模型名称重复
         Txt137, // 缓存创建
         Txt138, // 图表缓存创建提示
+        Txt139, // 协议追踪查看器
+        Txt140, // 追踪日志
+        Txt141, // 刷新
+        Txt142, // 无协议消息
+        Txt143, // 读取协议日志失败
+        Txt144, // 协议消息数量
     }
 
     internal static class AppTexts
@@ -286,6 +292,12 @@ namespace APIRelay
             [TextId.Txt136] = ("Model names must be unique.", "模型名称不能重复。"),
             [TextId.Txt137] = ("Cache Creation", "缓存创建"),
             [TextId.Txt138] = ("Cache Creation: {0:N0}", "缓存创建: {0:N0}"),
+            [TextId.Txt139] = ("Protocol Trace Viewer", "协议追踪查看器"),
+            [TextId.Txt140] = ("Trace log:", "追踪日志："),
+            [TextId.Txt141] = ("Refresh", "刷新"),
+            [TextId.Txt142] = ("No protocol messages in this log.", "此日志中没有协议消息。"),
+            [TextId.Txt143] = ("Failed to read trace log: {0}", "读取追踪日志失败：{0}"),
+            [TextId.Txt144] = ("{0} protocol messages", "共 {0} 条协议消息"),
         };
 
         public static string GetText(AppLanguage language, TextId id, params object[] args)

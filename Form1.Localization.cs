@@ -93,6 +93,7 @@ namespace APIRelay
             RefreshRouteProtocolOptions();
             UpdateTrayMenuText();
             usageBubble?.ApplyLanguage(currentLanguage);
+            protocolTraceViewer?.ApplyLanguage(currentLanguage);
             dailyChartPanel.Invalidate();
         }
 
