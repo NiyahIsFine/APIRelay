@@ -16,6 +16,8 @@ namespace APIRelay
         private sealed class ModelCostsForm : Form
         {
             private readonly ThemedDataGridView costsGrid = new();
+            private readonly Button fetchButton = new();
+            private readonly CancellationTokenSource fetchCancellation = new();
             private readonly AppLanguage language;
             private readonly Dictionary<string, ModelCostConfig> originalCosts;
             private readonly HashSet<string> defaultModelNames;
@@ -67,6 +69,15 @@ namespace APIRelay
                 };
                 addButton.Click += (_, _) => costsGrid.Rows.Add(string.Empty, "0", "0", "0", "0");
                 headerPanel.Controls.Add(addButton);
+
+                fetchButton.Text = AppTexts.GetText(language, TextId.Txt145);
+                fetchButton.AutoSize = true;
+                fetchButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                fetchButton.MinimumSize = new Size(UiTheme.GetButtonWidth(fetchButton.Text, minimumWidth: 80), UiTheme.GetButtonHeight());
+                fetchButton.Margin = new Padding(0, 1, 8, 1);
+                fetchButton.Click += FetchButton_Click;
+                headerPanel.Controls.Add(fetchButton);
+                FormClosed += (_, _) => fetchCancellation.Cancel();
 
                 var hintLabel = new Label
                 {
@@ -258,6 +269,119 @@ namespace APIRelay
                 }
 
                 e.Cancel = true;
+            }
+
+            private async void FetchButton_Click(object? sender, EventArgs e)
+            {
+                var title = AppTexts.GetText(language, TextId.Txt101);
+                fetchButton.Enabled = false;
+                fetchButton.Text = AppTexts.GetText(language, TextId.Txt146);
+                UseWaitCursor = true;
+
+                try
+                {
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(fetchCancellation.Token);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(60));
+                    var prices = await ModelsDevPricing.FetchAsync(HttpClient, timeout.Token);
+                    if (IsDisposed)
+                    {
+                        return;
+                    }
+
+                    var (added, updated) = ApplyFetchedPrices(prices);
+                    MessageBox.Show(this, AppTexts.GetText(language, TextId.Txt147, added, updated), title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException or IOException or OperationCanceledException)
+                {
+                    if (IsDisposed || fetchCancellation.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    MessageBox.Show(this, AppTexts.GetText(language, TextId.Txt148, ex.Message), title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                finally
+                {
+                    if (!IsDisposed)
+                    {
+                        UseWaitCursor = false;
+                        fetchButton.Text = AppTexts.GetText(language, TextId.Txt145);
+                        fetchButton.Enabled = true;
+                    }
+                }
+            }
+
+            private (int Added, int Updated) ApplyFetchedPrices(IReadOnlyList<ModelsDevPrice> prices)
+            {
+                costsGrid.EndEdit();
+                var rowsByName = new Dictionary<string, DataGridViewRow>(StringComparer.OrdinalIgnoreCase);
+                foreach (DataGridViewRow row in costsGrid.Rows)
+                {
+                    var modelName = Convert.ToString(row.Cells["modelNameColumn"].Value)?.Trim() ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(modelName))
+                    {
+                        rowsByName.TryAdd(modelName, row);
+                    }
+                }
+
+                var newRows = new List<DataGridViewRow>();
+                var updated = 0;
+
+                foreach (var price in prices)
+                {
+                    if (!rowsByName.TryGetValue(price.ModelName, out var row))
+                    {
+                        var newRow = new DataGridViewRow();
+                        newRow.CreateCells(
+                            costsGrid,
+                            price.ModelName,
+                            FormatCost(price.InputCostPerMillion),
+                            FormatCost(price.OutputCostPerMillion),
+                            FormatCost(price.CacheHitCostPerMillion ?? 0m),
+                            FormatCost(price.CacheCreationCostPerMillion ?? 0m));
+                        newRows.Add(newRow);
+                        continue;
+                    }
+
+                    // Cache prices the source does not list keep their current values.
+                    var changed = SetCostCell(row, "inputCostColumn", price.InputCostPerMillion);
+                    changed |= SetCostCell(row, "outputCostColumn", price.OutputCostPerMillion);
+                    changed |= SetCostCell(row, "cacheHitCostColumn", price.CacheHitCostPerMillion);
+                    changed |= SetCostCell(row, "cacheCreationCostColumn", price.CacheCreationCostPerMillion);
+                    if (changed)
+                    {
+                        updated++;
+                    }
+                }
+
+                if (newRows.Count > 0)
+                {
+                    costsGrid.Rows.AddRange(newRows.ToArray());
+                }
+
+                return (newRows.Count, updated);
+            }
+
+            private static bool SetCostCell(DataGridViewRow row, string columnName, decimal? cost)
+            {
+                if (cost is not { } value)
+                {
+                    return false;
+                }
+
+                var cell = row.Cells[columnName];
+                if (TryReadDecimal(cell.Value, out var current) && current == value)
+                {
+                    return false;
+                }
+
+                cell.Value = FormatCost(value);
+                return true;
+            }
+
+            private static string FormatCost(decimal cost)
+            {
+                return cost.ToString(CultureInfo.InvariantCulture);
             }
 
             private void OkButton_Click(object? sender, EventArgs e)

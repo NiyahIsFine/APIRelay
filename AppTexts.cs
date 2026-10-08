@@ -148,6 +148,10 @@ namespace APIRelay
         Txt142, // 无协议消息
         Txt143, // 读取协议日志失败
         Txt144, // 协议消息数量
+        Txt145, // 获取最新价格
+        Txt146, // 正在获取价格
+        Txt147, // 获取价格结果
+        Txt148, // 获取价格失败
     }
 
     internal static class AppTexts
@@ -298,6 +302,10 @@ namespace APIRelay
             [TextId.Txt142] = ("No protocol messages in this log.", "此日志中没有协议消息。"),
             [TextId.Txt143] = ("Failed to read trace log: {0}", "读取追踪日志失败：{0}"),
             [TextId.Txt144] = ("{0} protocol messages", "共 {0} 条协议消息"),
+            [TextId.Txt145] = ("Fetch Latest Prices", "获取最新价格"),
+            [TextId.Txt146] = ("Fetching...", "正在获取..."),
+            [TextId.Txt147] = ("Fetched prices from models.dev: {0} added, {1} updated. Click OK to save.", "已从 models.dev 获取价格：新增 {0} 个，更新 {1} 个。点击“确定”后保存。"),
+            [TextId.Txt148] = ("Failed to fetch prices from models.dev: {0}", "从 models.dev 获取价格失败：{0}"),
         };
 
         public static string GetText(AppLanguage language, TextId id, params object[] args)
