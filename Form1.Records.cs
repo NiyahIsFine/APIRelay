@@ -148,7 +148,7 @@ namespace APIRelay
 
             if (total == 0)
             {
-                total = prompt + completion + cacheCreation;
+                total = prompt + completion + (cacheTokensSeparateFromInput ? cacheCreation : 0);
             }
 
             usage = new UsageInfo(prompt, completion, cached, cacheCreation, total, ReadString(root, "model"), cacheTokensSeparateFromInput);
@@ -162,14 +162,15 @@ namespace APIRelay
             var cached = Math.Max(current.CachedTokens, next.CachedTokens);
             var cacheCreation = Math.Max(current.CacheCreationTokens, next.CacheCreationTokens);
             var total = Math.Max(current.TotalTokens, next.TotalTokens);
+            var cacheTokensSeparateFromInput = current.CacheTokensSeparateFromInput || next.CacheTokensSeparateFromInput;
 
             if (total == 0)
             {
-                total = prompt + completion + cacheCreation;
+                total = prompt + completion + (cacheTokensSeparateFromInput ? cacheCreation : 0);
             }
 
             var model = string.IsNullOrEmpty(next.Model) ? current.Model : next.Model;
-            return new UsageInfo(prompt, completion, cached, cacheCreation, total, model, current.CacheTokensSeparateFromInput || next.CacheTokensSeparateFromInput);
+            return new UsageInfo(prompt, completion, cached, cacheCreation, total, model, cacheTokensSeparateFromInput);
         }
 
         private static int ReadCachedTokens(JsonElement usageElement)
@@ -206,15 +207,15 @@ namespace APIRelay
 
             if (usageElement.TryGetProperty("input_tokens_details", out var inputDetails))
             {
-                cacheCreation = Math.Max(cacheCreation, ReadInt(inputDetails, "cache_creation_tokens", "cache_creation_input_tokens"));
+                cacheCreation = Math.Max(cacheCreation, ReadInt(inputDetails, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens"));
             }
 
             if (usageElement.TryGetProperty("prompt_tokens_details", out var promptDetails))
             {
-                cacheCreation = Math.Max(cacheCreation, ReadInt(promptDetails, "cache_creation_tokens", "cache_creation_input_tokens"));
+                cacheCreation = Math.Max(cacheCreation, ReadInt(promptDetails, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens"));
             }
 
-            cacheCreation = Math.Max(cacheCreation, ReadNestedInt(usageElement, "cache_creation_tokens", "cache_creation_input_tokens"));
+            cacheCreation = Math.Max(cacheCreation, ReadNestedInt(usageElement, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens"));
             return cacheCreation;
         }
 
