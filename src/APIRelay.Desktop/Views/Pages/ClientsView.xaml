@@ -1,0 +1,69 @@
+<UserControl x:Class="APIRelay.Desktop.Views.Pages.ClientsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:loc="clr-namespace:APIRelay.Desktop.Localization">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="0,0,6,0">
+      <StackPanel Margin="0,0,0,24">
+        <TextBlock Text="{loc:Tr Clients}" Style="{StaticResource PageTitle}" />
+        <TextBlock Text="{loc:Tr ClientsHint}" Style="{StaticResource Subtitle}" />
+      </StackPanel>
+      <Border Style="{StaticResource Card}" Background="{DynamicResource AccentSurfaceBrush}" BorderThickness="0">
+        <StackPanel>
+          <TextBlock Text="{Binding ClientStatus}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" Margin="0,0,0,8" />
+          <TextBlock Text="{loc:Tr ManagedHint}" Style="{StaticResource Subtitle}" />
+        </StackPanel>
+      </Border>
+      <Grid>
+        <Grid.Style>
+          <Style TargetType="Grid">
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                <Setter Property="IsEnabled" Value="False" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Grid.Style>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}" Margin="0,0,18,18">
+          <StackPanel>
+            <DockPanel>
+              <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ClaudeEnabled}" AutomationProperties.Name="Claude Code" />
+              <TextBlock Text="Claude Code" FontSize="21" FontWeight="SemiBold" />
+            </DockPanel>
+            <TextBlock Text="{loc:Tr Haiku}" Style="{StaticResource FieldLabel}" />
+            <ComboBox ItemsSource="{Binding ClaudeModelOptions}" SelectedValue="{Binding Haiku}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            <TextBlock Text="{loc:Tr Sonnet}" Style="{StaticResource FieldLabel}" />
+            <ComboBox ItemsSource="{Binding ClaudeModelOptions}" SelectedValue="{Binding Sonnet}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            <TextBlock Text="{loc:Tr Opus}" Style="{StaticResource FieldLabel}" />
+            <ComboBox ItemsSource="{Binding ClaudeModelOptions}" SelectedValue="{Binding Opus}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            <CheckBox Content="{loc:Tr ToolSearch}" IsChecked="{Binding ToolSearch}" Margin="0,14,0,0" />
+            <CheckBox Content="{loc:Tr MaximumEffort}" IsChecked="{Binding MaximumEffort}" Margin="0,14,0,0" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}">
+          <StackPanel>
+            <DockPanel>
+              <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding CodexEnabled}" AutomationProperties.Name="Codex" />
+              <TextBlock Text="Codex" FontSize="21" FontWeight="SemiBold" />
+            </DockPanel>
+            <TextBlock Text="{loc:Tr Selection}" Style="{StaticResource FieldLabel}" />
+            <ComboBox ItemsSource="{Binding CodexModelOptions}" SelectedValue="{Binding CodexModel}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            <CheckBox Content="{loc:Tr PreserveLogin}" IsChecked="{Binding PreserveLogin}" Margin="0,14,0,0" />
+            <Separator Margin="0,22,0,14" />
+            <TextBlock Text="{loc:Tr GlobalLimits}" Style="{StaticResource Subtitle}" />
+            <TextBlock Text="{loc:Tr ContextWindow}" Style="{StaticResource FieldLabel}" />
+            <TextBox Text="{Binding ContextLimit, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+            <TextBlock Text="{loc:Tr AutoCompact}" Style="{StaticResource FieldLabel}" />
+            <TextBox Text="{Binding CompactLimit, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+          </StackPanel>
+        </Border>
+      </Grid>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <TextBlock Text="{loc:Tr UnsavedChanges}" Visibility="{Binding HasClientChanges, Converter={StaticResource BoolVisibility}}" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" Margin="0,0,16,0" />
+        <ui:Button Content="{loc:Tr Cancel}" Command="{Binding ReloadClientsCommand}" Style="{StaticResource Action}" />
+        <ui:Button Content="{loc:Tr Apply}" Command="{Binding ApplyClientsCommand}" Style="{StaticResource PrimaryAction}" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,73 @@
+name: Continuous Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: continuous-release
+  cancel-in-progress: true
+
+env:
+  PROJECT_FILE: src/APIRelay.Desktop/APIRelay.Desktop.csproj
+  APP_NAME: apirelay
+  PUBLISH_DIR: artifacts/publish/single
+  RELEASE_TAG: continuous
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish standalone executable
+        run: dotnet publish $env:PROJECT_FILE --configuration Release -p:PublishProfile=SingleExe --output $env:PUBLISH_DIR
+
+      - name: Verify standalone executable
+        run: |
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE $env:PUBLISH_DIR
+          $files = @(Get-ChildItem -LiteralPath $outputDir -Force)
+          $expectedName = "$env:APP_NAME.exe"
+
+          if ($files.Count -ne 1 -or $files[0].PSIsContainer -or $files[0].Name -cne $expectedName) {
+            throw "Expected only $expectedName in $outputDir; found: $($files.Name -join ', ')"
+          }
+
+          "SINGLE_ASSET=$($files[0].FullName)" >> $env:GITHUB_ENV
+
+      - name: Move continuous tag to this commit
+        run: |
+          git tag --force $env:RELEASE_TAG $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Failed to update the local release tag." }
+          git push origin "refs/tags/$env:RELEASE_TAG" --force
+
+      - name: Publish continuous release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --verify-tag --title "Continuous Release" --notes "Windows x64 self-contained single-file build." --prerelease
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create the continuous release." }
+          }
+
+          gh release upload $env:RELEASE_TAG $env:SINGLE_ASSET --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload the standalone executable." }

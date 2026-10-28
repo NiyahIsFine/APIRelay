@@ -1,0 +1,149 @@
+<UserControl x:Class="APIRelay.Desktop.Views.Pages.ModelsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:loc="clr-namespace:APIRelay.Desktop.Localization">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="0,0,6,0">
+      <StackPanel Margin="0,0,0,24">
+        <TextBlock Text="{loc:Tr Models}" Style="{StaticResource PageTitle}" />
+        <TextBlock Text="{loc:Tr ModelsHint}" Style="{StaticResource Subtitle}" />
+      </StackPanel>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <WrapPanel>
+            <ComboBox ItemsSource="{Binding Protocols}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding DiscoveryProtocol}" Width="205" Style="{StaticResource Select}" Margin="0,0,12,8" IsEnabled="{Binding CanEditModels}" />
+            <ui:Button Content="{loc:Tr Discover}" Command="{Binding DiscoverModelsCommand}" Style="{StaticResource PrimaryAction}" />
+            <ui:TextBox Text="{Binding ModelSearch, UpdateSourceTrigger=PropertyChanged}" Width="230" Style="{StaticResource SearchField}" ToolTip="{loc:Tr Search}" PlaceholderText="{loc:Tr Search}" AutomationProperties.Name="{loc:Tr Search}" />
+          </WrapPanel>
+          <Grid Margin="0,18,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,22,0">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding DiscoveryCount}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="{loc:Tr Discovered}" Style="{StaticResource SectionTitle}" />
+              </DockPanel>
+              <Grid Height="250">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="40" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="{loc:Tr ModelId}" Margin="74,0,10,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" />
+                <ItemsControl x:Name="DiscoveredList" Grid.Row="1" ItemsSource="{Binding DiscoveredView}" FontSize="12"
+                    VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                  <ItemsControl.Template>
+                    <ControlTemplate TargetType="ItemsControl">
+                      <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Focusable="False">
+                        <ItemsPresenter />
+                      </ScrollViewer>
+                    </ControlTemplate>
+                  </ItemsControl.Template>
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid Height="43" Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="64" />
+                          <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            MinWidth="0" Padding="0" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            AutomationProperties.Name="{Binding Id}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Id}" ToolTip="{Binding Id}" Margin="10,0"
+                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Grid>
+              <WrapPanel Margin="0,14,0,0">
+                <ui:Button Content="{loc:Tr AddClaude}" Command="{Binding AddClaudeCommand}" Style="{StaticResource Action}" />
+                <ui:Button Content="{loc:Tr AddCodex}" Command="{Binding AddCodexCommand}" Style="{StaticResource Action}" />
+              </WrapPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" IsEnabled="{Binding CanEditModels}">
+              <TextBlock Text="{loc:Tr ManualModel}" Style="{StaticResource SectionTitle}" />
+              <TextBlock Text="{loc:Tr ModelId}" Style="{StaticResource FieldLabel}" />
+              <TextBox Text="{Binding ManualModelId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+              <TextBlock Text="{loc:Tr DisplayName}" Style="{StaticResource FieldLabel}" />
+              <TextBox Text="{Binding ManualDisplayName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+              <WrapPanel Margin="0,20,0,0">
+                <ui:Button Content="{loc:Tr AddClaude}" Command="{Binding ManualClaudeCommand}" Style="{StaticResource Action}" />
+                <ui:Button Content="{loc:Tr AddCodex}" Command="{Binding ManualCodexCommand}" Style="{StaticResource Action}" />
+              </WrapPanel>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr Registered}" Style="{StaticResource SectionTitle}" />
+          <DataGrid ItemsSource="{Binding Registrations}" SelectedItem="{Binding SelectedRegistration}" IsReadOnly="True" Style="{StaticResource DataTable}" Height="185">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="{loc:Tr Protocol}" Binding="{Binding Protocol}" Width="165" />
+              <DataGridTextColumn Header="{loc:Tr ModelId}" Binding="{Binding ModelId}" Width="*" />
+              <DataGridTextColumn Header="{loc:Tr DisplayName}" Binding="{Binding DisplayName}" Width="*" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Margin="0,12,0,0">
+            <ui:Button Content="{loc:Tr Remove}" Command="{Binding RemoveRegistrationCommand}" Style="{StaticResource Action}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <ui:Button Content="{loc:Tr Remove}" Command="{Binding RemoveCandidateCommand}" Style="{StaticResource Action}" />
+            </StackPanel>
+            <TextBlock Text="{loc:Tr Candidates}" Style="{StaticResource SectionTitle}" />
+          </DockPanel>
+          <DataGrid ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}" IsReadOnly="True" Style="{StaticResource DataTable}" Height="210">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="{loc:Tr Protocol}" Binding="{Binding Protocol}" Width="165" />
+              <DataGridTextColumn Header="{loc:Tr ModelId}" Binding="{Binding ModelId}" Width="2*" />
+              <DataGridTextColumn Header="{loc:Tr ContextWindow}" Binding="{Binding ContextWindow}" Width="130" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Text="{loc:Tr SelectCandidate}" Style="{StaticResource Subtitle}" Margin="0,12,0,0" />
+          <Grid Margin="0,10,0,0" IsEnabled="{Binding CanEditModels}" Visibility="{Binding HasCandidate, Converter={StaticResource BoolVisibility}}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,24,0">
+              <TextBlock Text="{loc:Tr DisplayName}" Style="{StaticResource FieldLabel}" />
+              <TextBox Text="{Binding CandidateDisplayName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+              <TextBlock Text="{loc:Tr ContextWindow}" Style="{StaticResource FieldLabel}" />
+              <TextBox Text="{Binding CandidateContext, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+              <TextBlock Text="{loc:Tr Efforts}" Style="{StaticResource FieldLabel}" />
+              <ItemsControl ItemsSource="{Binding CandidateEfforts}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected}" Margin="0,6,16,6" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{loc:Tr DefaultEffort}" Style="{StaticResource FieldLabel}" />
+              <ComboBox ItemsSource="{Binding DefaultEffortOptions}" SelectedValue="{Binding CandidateDefault}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            </StackPanel>
+          </Grid>
+          <StackPanel Orientation="Horizontal" Margin="0,20,0,0" Visibility="{Binding HasCandidate, Converter={StaticResource BoolVisibility}}">
+            <ui:Button Content="{loc:Tr SaveCandidate}" Command="{Binding SaveCandidateCommand}" Style="{StaticResource PrimaryAction}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

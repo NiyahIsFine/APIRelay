@@ -1,0 +1,595 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
+using Tomlyn;
+using Tomlyn.Model;
+
+namespace APIRelay;
+
+internal sealed partial class RelayEngine
+{
+    private UsageInfo ExtractUsage(byte[] responseBytes, string? mediaType)
+    {
+        if (responseBytes.Length == 0)
+        {
+            return UsageInfo.Empty;
+        }
+
+        var body = Encoding.UTF8.GetString(responseBytes);
+        if (mediaType?.Contains("text/event-stream", StringComparison.OrdinalIgnoreCase) == true || body.Contains("data:", StringComparison.Ordinal))
+        {
+            return ExtractStreamingUsage(body);
+        }
+
+        return ExtractJsonUsage(body);
+    }
+
+    private static UsageInfo ExtractJsonUsage(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return TryReadUsage(document.RootElement, out var usage) ? usage : UsageInfo.Empty;
+        }
+        catch (JsonException)
+        {
+            return UsageInfo.Empty;
+        }
+    }
+
+    private static UsageInfo ExtractStreamingUsage(string body)
+    {
+        var result = UsageInfo.Empty;
+        var eventData = new StringBuilder();
+
+        foreach (var rawLine in body.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0)
+            {
+                result = MergeUsage(result, ExtractUsageFromEventData(eventData.ToString()));
+                eventData.Clear();
+                continue;
+            }
+
+            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var data = line[5..].TrimStart();
+            eventData.AppendLine(data);
+        }
+
+        result = MergeUsage(result, ExtractUsageFromEventData(eventData.ToString()));
+
+        return result;
+    }
+
+    private static UsageInfo ExtractUsageFromEventData(string eventData)
+    {
+        var json = eventData.Trim();
+        if (json.Length == 0 || json.Equals("[DONE]", StringComparison.OrdinalIgnoreCase))
+        {
+            return UsageInfo.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return TryReadUsage(document.RootElement, out var usage) ? usage : UsageInfo.Empty;
+        }
+        catch (JsonException)
+        {
+            return UsageInfo.Empty;
+        }
+    }
+
+    private static bool TryReadUsage(JsonElement root, out UsageInfo usage)
+    {
+        usage = UsageInfo.Empty;
+
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (TryReadUsageFromElement(root, out usage))
+        {
+            return true;
+        }
+
+        if (root.TryGetProperty("response", out var responseElement) && TryReadUsageFromElement(responseElement, out usage))
+        {
+            return true;
+        }
+
+        if (root.TryGetProperty("message", out var messageElement) && TryReadUsageFromElement(messageElement, out usage))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadUsageFromElement(JsonElement root, out UsageInfo usage)
+    {
+        usage = UsageInfo.Empty;
+
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!root.TryGetProperty("usage", out var usageElement) || usageElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return false;
+        }
+
+        if (usageElement.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var prompt = ReadInt(usageElement, "prompt_tokens", "input_tokens");
+        var completion = ReadInt(usageElement, "completion_tokens", "output_tokens");
+        var cacheTokensSeparateFromInput = usageElement.TryGetProperty("cache_read_input_tokens", out _)
+            || usageElement.TryGetProperty("cache_creation_input_tokens", out _);
+        var cached = ReadCachedTokens(usageElement);
+        var cacheCreation = ReadCacheCreationTokens(usageElement);
+        var total = ReadInt(usageElement, "total_tokens");
+
+        if (total == 0)
+        {
+            total = prompt + completion + (cacheTokensSeparateFromInput ? cacheCreation : 0);
+        }
+
+        usage = new UsageInfo(prompt, completion, cached, cacheCreation, total, ReadString(root, "model"), cacheTokensSeparateFromInput);
+        return total > 0 || prompt > 0 || completion > 0 || cached > 0 || cacheCreation > 0;
+    }
+
+    private static UsageInfo MergeUsage(UsageInfo current, UsageInfo next)
+    {
+        var prompt = Math.Max(current.PromptTokens, next.PromptTokens);
+        var completion = Math.Max(current.CompletionTokens, next.CompletionTokens);
+        var cached = Math.Max(current.CachedTokens, next.CachedTokens);
+        var cacheCreation = Math.Max(current.CacheCreationTokens, next.CacheCreationTokens);
+        var total = Math.Max(current.TotalTokens, next.TotalTokens);
+        var cacheTokensSeparateFromInput = current.CacheTokensSeparateFromInput || next.CacheTokensSeparateFromInput;
+
+        if (total == 0)
+        {
+            total = prompt + completion + (cacheTokensSeparateFromInput ? cacheCreation : 0);
+        }
+
+        var model = string.IsNullOrEmpty(next.Model) ? current.Model : next.Model;
+        return new UsageInfo(prompt, completion, cached, cacheCreation, total, model, cacheTokensSeparateFromInput);
+    }
+
+    private static int ReadCachedTokens(JsonElement usageElement)
+    {
+        if (usageElement.ValueKind != JsonValueKind.Object)
+        {
+            return 0;
+        }
+
+        var cached = ReadInt(usageElement, "cache_read_input_tokens");
+
+        if (usageElement.TryGetProperty("input_tokens_details", out var inputDetails))
+        {
+            cached = Math.Max(cached, ReadInt(inputDetails, "cached_tokens"));
+        }
+
+        if (usageElement.TryGetProperty("prompt_tokens_details", out var promptDetails))
+        {
+            cached = Math.Max(cached, ReadInt(promptDetails, "cached_tokens"));
+        }
+
+        cached = Math.Max(cached, ReadNestedInt(usageElement, "cached_tokens", "cache_read_input_tokens"));
+        return cached;
+    }
+
+    private static int ReadCacheCreationTokens(JsonElement usageElement)
+    {
+        if (usageElement.ValueKind != JsonValueKind.Object)
+        {
+            return 0;
+        }
+
+        var cacheCreation = ReadInt(usageElement, "cache_creation_input_tokens");
+
+        if (usageElement.TryGetProperty("input_tokens_details", out var inputDetails))
+        {
+            cacheCreation = Math.Max(cacheCreation, ReadInt(inputDetails, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens"));
+        }
+
+        if (usageElement.TryGetProperty("prompt_tokens_details", out var promptDetails))
+        {
+            cacheCreation = Math.Max(cacheCreation, ReadInt(promptDetails, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens"));
+        }
+
+        cacheCreation = Math.Max(cacheCreation, ReadNestedInt(usageElement, "cache_write_tokens", "cache_creation_tokens", "cache_creation_input_tokens"));
+        return cacheCreation;
+    }
+
+    private static int ReadNestedInt(JsonElement element, params string[] propertyNames)
+    {
+        var result = ReadInt(element, propertyNames);
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                result = Math.Max(result, ReadNestedInt(property.Value, propertyNames));
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                result = Math.Max(result, ReadNestedInt(item, propertyNames));
+            }
+        }
+
+        return result;
+    }
+
+    private static int ReadInt(JsonElement element, params string[] propertyNames)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return 0;
+        }
+
+        foreach (var propertyName in propertyNames)
+        {
+            if (element.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var number))
+            {
+                return number;
+            }
+        }
+
+        return 0;
+    }
+
+    private static string ReadString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return string.Empty;
+        }
+
+        return element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static string SelectRecordedModel(string responseModel, string? routedModel, byte[] requestBody)
+    {
+        if (!string.IsNullOrWhiteSpace(responseModel))
+        {
+            return responseModel;
+        }
+
+        return !string.IsNullOrWhiteSpace(routedModel) ? routedModel : ExtractRequestModel(requestBody);
+    }
+
+    private static bool HasBillableUsage(UsageInfo usage)
+    {
+        return usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheCreationTokens > 0;
+    }
+
+    private static string FormatInputTokens(RequestRecord record)
+    {
+        return $"{CalculateNonCachedReadInputTokens(record)}/{record.CachedTokens}";
+    }
+
+    private decimal CalculateRecordCost(RequestRecord record)
+    {
+        return record.Cost ?? CalculateConfiguredRecordCost(record) ?? 0m;
+    }
+
+    private decimal? CalculateConfiguredRecordCost(RequestRecord record)
+    {
+        var modelCost = FindModelCost(record.Model);
+        if (modelCost == null)
+        {
+            return null;
+        }
+
+        var billableInputTokens = CalculateBillableInputTokens(record);
+        return (billableInputTokens * modelCost.InputCostPerMillion
+            + record.CompletionTokens * modelCost.OutputCostPerMillion
+            + record.CachedTokens * modelCost.CacheHitCostPerMillion
+            + record.CacheCreationTokens * modelCost.CacheCreationCostPerMillion) / 1_000_000m;
+    }
+
+    private string BuildCostFormulaText(RequestRecord record)
+    {
+        var totalCost = CalculateRecordCost(record);
+        if (record.Cost.HasValue)
+        {
+            return GetText(TextId.Txt86, FormatCurrency(totalCost));
+        }
+
+        var billableInputTokens = CalculateBillableInputTokens(record);
+        var modelCost = FindModelCost(record.Model);
+        if (modelCost == null)
+        {
+            return GetText(TextId.Txt78, record.Model);
+        }
+
+        var inputCost = billableInputTokens * modelCost.InputCostPerMillion / 1_000_000m;
+        var outputCost = record.CompletionTokens * modelCost.OutputCostPerMillion / 1_000_000m;
+        var cacheHitCost = record.CachedTokens * modelCost.CacheHitCostPerMillion / 1_000_000m;
+        var cacheCreationCost = record.CacheCreationTokens * modelCost.CacheCreationCostPerMillion / 1_000_000m;
+        totalCost = inputCost + outputCost + cacheHitCost + cacheCreationCost;
+        var inputMode = record.CacheTokensSeparateFromInput
+            ? GetText(TextId.Txt79)
+            : GetText(TextId.Txt80);
+
+        return string.Join("\r\n", new[]
+        {
+                GetText(TextId.Txt81, record.Model),
+                inputMode,
+                GetText(TextId.Txt82, billableInputTokens, modelCost.InputCostPerMillion, FormatCurrency(inputCost)),
+                GetText(TextId.Txt83, record.CompletionTokens, modelCost.OutputCostPerMillion, FormatCurrency(outputCost)),
+                GetText(TextId.Txt84, record.CachedTokens, modelCost.CacheHitCostPerMillion, FormatCurrency(cacheHitCost)),
+                GetText(TextId.Txt85, record.CacheCreationTokens, modelCost.CacheCreationCostPerMillion, FormatCurrency(cacheCreationCost)),
+                GetText(TextId.Txt86, FormatCurrency(totalCost))
+            });
+    }
+
+    private static int CalculateBillableInputTokens(RequestRecord record)
+    {
+        return record.CacheTokensSeparateFromInput
+            ? record.PromptTokens
+            : Math.Max(0, record.PromptTokens - record.CachedTokens - record.CacheCreationTokens);
+    }
+
+    private static int CalculateTotalInputTokens(RequestRecord record)
+    {
+        return CalculateNonCachedReadInputTokens(record) + record.CachedTokens;
+    }
+
+    private static int CalculateNonCachedReadInputTokens(RequestRecord record)
+    {
+        return record.CacheTokensSeparateFromInput
+            ? record.PromptTokens + record.CacheCreationTokens
+            : Math.Max(0, record.PromptTokens - record.CachedTokens);
+    }
+
+    private ModelCostConfig? FindModelCost(string model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return null;
+        }
+
+        lock (modelCosts)
+        {
+            return modelCosts.FirstOrDefault(cost => string.Equals(cost.ModelName, model, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static string FormatCurrency(decimal value)
+    {
+        return "$" + value.ToString("0.000000", CultureInfo.InvariantCulture);
+    }
+
+    private (decimal Input, decimal Output, decimal CacheHit, decimal CacheCreation) CalculateUsageCosts(IEnumerable<RequestRecord> records)
+    {
+        decimal input = 0m;
+        decimal output = 0m;
+        decimal cacheHit = 0m;
+        decimal cacheCreation = 0m;
+
+        foreach (var record in records)
+        {
+            var modelCost = FindModelCost(record.Model);
+            if (modelCost == null)
+            {
+                continue;
+            }
+
+            input += CalculateBillableInputTokens(record) * modelCost.InputCostPerMillion / 1_000_000m;
+            output += record.CompletionTokens * modelCost.OutputCostPerMillion / 1_000_000m;
+            cacheHit += record.CachedTokens * modelCost.CacheHitCostPerMillion / 1_000_000m;
+            cacheCreation += record.CacheCreationTokens * modelCost.CacheCreationCostPerMillion / 1_000_000m;
+        }
+
+        return (input, output, cacheHit, cacheCreation);
+    }
+
+    private static string FormatCacheHitRate(long cached, long input, long cacheCreation)
+    {
+        var denominator = input >= cached + cacheCreation ? input : input + cached + cacheCreation;
+        return denominator <= 0 ? "0.00%" : ((double)cached / denominator).ToString("P2");
+    }
+
+    private static double CalculateCacheHitRate(long cached, long input, long cacheCreation)
+    {
+        var denominator = input >= cached + cacheCreation ? input : input + cached + cacheCreation;
+        return denominator <= 0 ? 0 : (double)cached / denominator;
+    }
+
+    private static string FormatDurationPair(long elapsedMs, long firstResponseMs)
+    {
+        return $"{FormatDuration(elapsedMs)}/{FormatDuration(firstResponseMs)}";
+    }
+
+    private static string FormatDuration(long milliseconds)
+    {
+        return milliseconds >= 1000 ? $"{milliseconds / 1000.0:0.##}s" : $"{milliseconds}ms";
+    }
+
+    private string GetRecordPath(DateTime date)
+    {
+        return Path.Combine(recordsDirectory, $"{date:yyyy-MM-dd}.json");
+    }
+
+    private List<RequestRecord> LoadRecordsForDate(DateTime date)
+    {
+        var recordPath = GetRecordPath(date.Date);
+        if (!File.Exists(recordPath))
+        {
+            return new List<RequestRecord>();
+        }
+
+        try
+        {
+            return LoadRecordsFromPath(recordPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            AppendLog(GetText(TextId.Txt88, ex.Message), true);
+            return new List<RequestRecord>();
+        }
+    }
+
+    private List<RequestRecord> LoadRecordsFromPath(string recordPath, bool populateMissingCosts = false)
+    {
+        lock (recordsLock)
+        {
+            var records = JsonSerializer.Deserialize<List<RequestRecord>>(File.ReadAllText(recordPath)) ?? new List<RequestRecord>();
+            if (populateMissingCosts && PopulateMissingRecordCosts(records))
+            {
+                WriteRecordsToPath(recordPath, records);
+            }
+
+            return records;
+        }
+    }
+
+    private List<RequestRecord> LoadAllRecords(bool populateMissingCosts = false)
+    {
+        var records = new List<RequestRecord>();
+        var recordPathsToUpdate = new List<string>();
+
+        foreach (var recordPath in Directory.GetFiles(recordsDirectory, "*.json"))
+        {
+            try
+            {
+                var dateRecords = LoadRecordsFromPath(recordPath);
+                records.AddRange(dateRecords);
+                if (populateMissingCosts && PopulateMissingRecordCosts(dateRecords))
+                {
+                    recordPathsToUpdate.Add(recordPath);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                AppendLog(GetText(TextId.Txt89, Path.GetFileName(recordPath), ex.Message), true);
+            }
+        }
+
+        foreach (var recordPath in recordPathsToUpdate)
+        {
+            try
+            {
+                LoadRecordsFromPath(recordPath, populateMissingCosts: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                AppendLog(GetText(TextId.Txt89, Path.GetFileName(recordPath), ex.Message), true);
+            }
+        }
+
+        return records;
+    }
+
+    private bool PopulateMissingRecordCosts(IEnumerable<RequestRecord> records)
+    {
+        var updated = false;
+        foreach (var record in records)
+        {
+            if (record.Cost.HasValue)
+            {
+                continue;
+            }
+
+            var cost = CalculateConfiguredRecordCost(record);
+            if (!cost.HasValue)
+            {
+                continue;
+            }
+
+            record.Cost = cost.Value;
+            updated = true;
+        }
+
+        return updated;
+    }
+
+    private static void WriteRecordsToPath(string recordPath, List<RequestRecord> records)
+    {
+        WriteAllTextAtomically(recordPath, JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private bool SaveRequestRecord(RequestRecord record)
+    {
+        var recordPath = GetRecordPath(record.Timestamp.Date);
+        var records = new List<RequestRecord>();
+        var isFirstRecordForDate = false;
+
+        try
+        {
+            lock (recordsLock)
+            {
+                if (File.Exists(recordPath))
+                {
+                    records = JsonSerializer.Deserialize<List<RequestRecord>>(File.ReadAllText(recordPath)) ?? new List<RequestRecord>();
+                }
+
+                isFirstRecordForDate = records.Count == 0;
+                records.Add(record);
+                WriteAllTextAtomically(recordPath, JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
+            }
+
+            return isFirstRecordForDate;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            AppendInternalException("Failed to save request record.", ex);
+            TryBeginInvoke(() => AppendLog(GetText(TextId.Txt90, ex.Message), true));
+            return false;
+        }
+    }
+
+    private void RecordRequest(HttpListenerRequest request, string providerPath, int statusCode, UsageInfo usage, long elapsedMs, long firstResponseMs, byte[] requestBody, string? routedModel)
+    {
+        if (!HasBillableUsage(usage))
+        {
+            return;
+        }
+
+        var record = new RequestRecord
+        {
+            Timestamp = DateTime.Now,
+            Model = SelectRecordedModel(usage.Model, routedModel, requestBody),
+            Path = string.IsNullOrWhiteSpace(providerPath) ? request.Url?.PathAndQuery ?? string.Empty : providerPath,
+            Summary = BuildRequestSummary(request, requestBody),
+            StatusCode = statusCode,
+            PromptTokens = usage.PromptTokens,
+            CompletionTokens = usage.CompletionTokens,
+            CachedTokens = usage.CachedTokens,
+            CacheCreationTokens = usage.CacheCreationTokens,
+            CacheTokensSeparateFromInput = usage.CacheTokensSeparateFromInput,
+            TotalTokens = usage.TotalTokens,
+            ElapsedMs = elapsedMs,
+            FirstResponseMs = firstResponseMs
+        };
+        record.Cost = CalculateConfiguredRecordCost(record);
+
+        SaveRequestRecord(record);
+        RequestRecorded?.Invoke(record);
+    }
+}

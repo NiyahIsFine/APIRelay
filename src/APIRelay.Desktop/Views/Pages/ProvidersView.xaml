@@ -1,0 +1,42 @@
+<UserControl x:Class="APIRelay.Desktop.Views.Pages.ProvidersView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:loc="clr-namespace:APIRelay.Desktop.Localization">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="0,0,6,0">
+      <StackPanel Margin="0,0,0,24">
+        <TextBlock Text="{loc:Tr Providers}" Style="{StaticResource PageTitle}" />
+        <TextBlock Text="{loc:Tr ProvidersHint}" Style="{StaticResource Subtitle}" />
+      </StackPanel>
+      <TextBlock Text="{loc:Tr StopToEdit}" Visibility="{Binding IsRunning, Converter={StaticResource BoolVisibility}}" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Margin="0,0,0,16" />
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="235" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <ListBox ItemsSource="{Binding ProviderDrafts}" SelectedItem="{Binding SelectedProvider}" DisplayMemberPath="Name" ItemContainerStyle="{StaticResource NavigationItem}" Background="Transparent" BorderThickness="0" Margin="0,0,20,0" VerticalAlignment="Top" />
+        <Border Grid.Column="1" Style="{StaticResource Card}">
+          <StackPanel>
+            <StackPanel IsEnabled="{Binding CanEdit}">
+              <StackPanel DataContext="{Binding SelectedProvider}">
+                <TextBlock Text="{Binding Name}" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{loc:Tr ProviderUrl}" Style="{StaticResource FieldLabel}" />
+                <TextBox Text="{Binding ProviderUrl, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+                <TextBlock Text="{loc:Tr ApiKey}" Style="{StaticResource FieldLabel}" />
+                <PasswordBox x:Name="KeyBox" PasswordChanged="KeyBox_PasswordChanged" DataContextChanged="KeyBox_DataContextChanged" MinHeight="36" Padding="10,7" />
+                <TextBlock Text="{loc:Tr KeyHint}" Style="{StaticResource Subtitle}" FontSize="11" Margin="0,8,0,0" />
+                <CheckBox Content="{loc:Tr OverrideList}" IsChecked="{Binding OverrideList}" Margin="0,14,0,0" />
+                <TextBox Text="{Binding ModelListUrl, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding OverrideList}" Style="{StaticResource Field}" Margin="0,10,0,0" />
+                <StackPanel Visibility="{Binding IsMessages, Converter={StaticResource BoolVisibility}}">
+                  <TextBlock Text="{loc:Tr AnthropicVersion}" Style="{StaticResource FieldLabel}" />
+                  <TextBox Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,26,0,0">
+              <ui:Button Content="{loc:Tr Save}" Command="{Binding SaveProvidersCommand}" Style="{StaticResource PrimaryAction}" />
+              <ui:Button Content="{loc:Tr Cancel}" Command="{Binding ReloadProvidersCommand}" Style="{StaticResource Action}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,97 @@
+<UserControl x:Class="APIRelay.Desktop.Views.Pages.SettingsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" xmlns:loc="clr-namespace:APIRelay.Desktop.Localization">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="0,0,6,0">
+      <StackPanel Margin="0,0,0,24">
+        <TextBlock Text="{loc:Tr Settings}" Style="{StaticResource PageTitle}" />
+        <TextBlock Text="{loc:Tr SettingsHint}" Style="{StaticResource Subtitle}" />
+      </StackPanel>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr Appearance}" Style="{StaticResource SectionTitle}" />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,20,0">
+              <TextBlock Text="{loc:Tr Theme}" Style="{StaticResource FieldLabel}" />
+              <ComboBox SelectedIndex="{Binding ThemeIndex}" Style="{StaticResource Select}">
+                <ComboBoxItem Content="{loc:Tr Dark}" />
+                <ComboBoxItem Content="{loc:Tr Light}" />
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+              <TextBlock Text="{loc:Tr Language}" Style="{StaticResource FieldLabel}" />
+              <ComboBox SelectedIndex="{Binding LanguageIndex}" Style="{StaticResource Select}">
+                <ComboBoxItem Content="简体中文" />
+                <ComboBoxItem Content="English" />
+              </ComboBox>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr RouteBuilder}" Style="{StaticResource SectionTitle}" />
+          <TextBlock Text="{loc:Tr Endpoint}" Style="{StaticResource FieldLabel}" />
+          <TextBox Text="{Binding LocalUrl, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsRunning}" Style="{StaticResource Field}" />
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,20,0">
+              <TextBlock Text="{loc:Tr ServerProtocol}" Style="{StaticResource FieldLabel}" />
+              <ComboBox ItemsSource="{Binding Protocols}" SelectedValue="{Binding RouteServer}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+              <TextBlock Text="{loc:Tr ClientProtocol}" Style="{StaticResource FieldLabel}" />
+              <ComboBox ItemsSource="{Binding ClientProtocols}" SelectedValue="{Binding RouteClient}" DisplayMemberPath="Label" SelectedValuePath="Value" Style="{StaticResource Select}" />
+            </StackPanel>
+          </Grid>
+          <DockPanel Margin="0,20,0,0">
+            <ui:Button DockPanel.Dock="Right" Content="{loc:Tr Copy}" Command="{Binding CopyRouteCommand}" Style="{StaticResource Action}" Margin="10,0,0,0" />
+            <TextBox Text="{Binding RoutePreview, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" Style="{StaticResource Field}" />
+          </DockPanel>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr Desktop}" Style="{StaticResource SectionTitle}" />
+          <CheckBox Content="{loc:Tr ShowBubble}" IsChecked="{Binding ShowBubble}" Margin="0,14,0,0" />
+          <CheckBox Content="{loc:Tr Resume}" IsChecked="{Binding ResumeOnLaunch}" Margin="0,14,0,0" />
+          <TextBlock Text="{loc:Tr TrayHint}" Style="{StaticResource Subtitle}" Margin="0,16,0,0" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr Storage}" Style="{StaticResource SectionTitle}" />
+          <DockPanel Margin="0,8">
+            <ui:Button DockPanel.Dock="Right" Content="{loc:Tr OpenFolder}" Command="{Binding OpenSettingsCommand}" Style="{StaticResource Action}" />
+            <StackPanel>
+              <TextBlock Text="{loc:Tr SettingsFolder}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding SettingsPath}" Style="{StaticResource Subtitle}" TextWrapping="Wrap" FontSize="11" Margin="0,4,16,0" />
+            </StackPanel>
+          </DockPanel>
+          <DockPanel Margin="0,8">
+            <ui:Button DockPanel.Dock="Right" Content="{loc:Tr OpenFolder}" Command="{Binding OpenRecordsCommand}" Style="{StaticResource Action}" />
+            <StackPanel>
+              <TextBlock Text="{loc:Tr RecordsFolder}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding RecordsPath}" Style="{StaticResource Subtitle}" TextWrapping="Wrap" FontSize="11" Margin="0,4,16,0" />
+            </StackPanel>
+          </DockPanel>
+          <DockPanel Margin="0,8">
+            <ui:Button DockPanel.Dock="Right" Content="{loc:Tr OpenFolder}" Command="{Binding OpenLogsCommand}" Style="{StaticResource Action}" />
+            <StackPanel>
+              <TextBlock Text="{loc:Tr LogsFolder}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding LogsPath}" Style="{StaticResource Subtitle}" TextWrapping="Wrap" FontSize="11" Margin="0,4,16,0" />
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+      </Border>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <ui:Button Content="{loc:Tr Save}" Command="{Binding SaveSettingsCommand}" Style="{StaticResource PrimaryAction}" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
